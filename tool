@@ -31,10 +31,8 @@
         max-height: ${isMobile ? '38vh' : '380px'}; overflow-y: auto; padding: 2px;
         -webkit-overflow-scrolling: touch;
       "></div>
-      <div style="margin-top:12px;font-size:11px;color:#6b7280;text-align:center;">
-        ★ = bẫy đã đánh dấu • ✗ đỏ = cụt • ✗ cam = không nên dùng<br>
-        (sau là cụt hoặc từ bẫy) • Chạm chữ → copy/dán<br>
-        🪤 = đánh dấu bẫy • 🗑 = xoá • Kho Firebase
+      <div style="margin-top:10px;font-size:11px;color:#6b7280;text-align:center;line-height:1.45;">
+        Chạm chữ → copy/dán
       </div>
     </div>
   `;
@@ -79,20 +77,19 @@
   const FIREBASE_DB_URL = "https://khotu-fc3e7-default-rtdb.asia-southeast1.firebasedatabase.app";
 
   const byFirst = new Map();   // âm đầu -> [từ đầy đủ, ...]
-  const trapSet = new Set();   // các từ được đánh dấu thủ công là "nên dùng để bẫy"
+  const contCount = new Map(); // âm -> số từ bắt đầu bằng âm đó
+  const trapFirst = new Map(); // âm -> có từ bẫy bắt đầu bằng âm đó?
+  const trapSet = new Set();
   let lastWord = '';
   let isReady = false;
 
   statusEl.textContent = 'Đang tải kho từ...';
   statusEl.style.color = '#d97706';
 
-  // Firebase key không được chứa . # $ [ ] / — chuẩn hoá giống hệt trang quản lý
-  function toKey(word) {
-    return encodeURIComponent(word.trim().toLowerCase()).replace(/\./g, '%2E');
-  }
-
   function buildIndex(entries) {
     byFirst.clear();
+    contCount.clear();
+    trapFirst.clear();
     trapSet.clear();
     for (const entry of entries) {
       const word = (typeof entry === 'string') ? entry : entry.w;
@@ -105,9 +102,9 @@
       if (!byFirst.has(first)) byFirst.set(first, []);
       byFirst.get(first).push(word);
     }
-    // Giới hạn 80 gợi ý mỗi âm để tránh quá tải
     for (const [k, arr] of byFirst) {
-      byFirst.set(k, arr.slice(0, 80));
+      contCount.set(k, arr.length);
+      trapFirst.set(k, arr.some(w => trapSet.has(w)));
     }
   }
 
@@ -133,45 +130,34 @@
       });
   }
 
-  // Xoá một từ khỏi kho (đồng bộ với trang quản lý)
-  function deleteWordRemote(word) {
-    return fetch(`${FIREBASE_DB_URL}/words/${toKey(word)}.json`, { method: 'DELETE' })
-      .then(() => loadWords());
-  }
-
-  // Bật/tắt đánh dấu "nên dùng để bẫy" cho một từ
-  function toggleTrapRemote(word, newTrap) {
-    return fetch(`${FIREBASE_DB_URL}/words/${toKey(word)}.json`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ w: word, trap: newTrap })
-    }).then(() => loadWords());
-  }
-
   loadWords();
 
   // Đồng bộ theo thời gian thực: khi ai đó thêm/xoá/đánh dấu từ trên trang quản lý,
   // tool sẽ tự cập nhật mà không cần tải lại trang (kiểm tra mỗi 15 giây).
   setInterval(loadWords, 15000);
 
-  // ===== Logic đánh dấu đỏ =====
+  // ===== Logic đánh dấu =====
   function lastSyllable(w) {
     return w.trim().toLowerCase().split(/\s+/).pop();
   }
-  function continuationsOf(word) {
-    const ns = lastSyllable(word);
-    return (byFirst.get(ns) || []).filter(x => x !== word);
+  function contCountOf(word) {
+    return contCount.get(lastSyllable(word)) || 0;
   }
   function isDeadEndWord(word) {
-    return continuationsOf(word).length === 0;
+    // contCount gồm chính word → cụt khi ≤ 1
+    return contCountOf(word) <= 1;
   }
   function isRiskyTrap(word) {
-    const opts = continuationsOf(word);
-    if (opts.length === 0) return false;
-    // Không nên dùng nếu đối thủ có thể:
-    // 1) chọn ngay một từ khiến lượt sau của bạn bị cụt, HOẶC
-    // 2) chọn ngay một từ bẫy đã đánh dấu (🪤) — giống trang Nối Từ
-    return opts.some(opt => isDeadEndWord(opt) || trapSet.has(opt));
+    const ns = lastSyllable(word);
+    const n = contCount.get(ns) || 0;
+    if (n <= 1) return false;
+    if (trapFirst.get(ns)) return true;
+    const opts = byFirst.get(ns) || [];
+    for (let i = 0; i < opts.length; i++) {
+      if (opts[i] === word) continue;
+      if (isDeadEndWord(opts[i])) return true;
+    }
+    return false;
   }
 
   function getLastSyllable(text) {
@@ -199,6 +185,44 @@
     return candidates[0].text;
   }
 
+  function chipHtml(full, kind) {
+    const second = full.split(/\s+/)[1];
+    const marked = kind === 'trap';
+    const styles = {
+      trap:  { bg: 'rgba(255,215,0,.16)', border: '#f5c518', color: '#92400e', mark: '★' },
+      dead:  { bg: 'rgba(255,92,122,.12)', border: 'rgba(255,92,122,.55)', color: '#be123c', mark: '✗' },
+      risk:  { bg: 'rgba(255,183,0,.12)', border: 'rgba(255,183,0,.5)', color: '#b45309', mark: '✗' },
+      ok:    { bg: '#f0fdf4', border: '#86efac', color: '#166534', mark: '' }
+    };
+    const s = styles[kind] || styles.ok;
+    const mark = s.mark ? `<span style="font-weight:800;margin-right:3px;">${s.mark}</span>` : '';
+    return `<div class="sugg" data-word="${second}" data-full="${full}" style="
+      display:inline-flex;align-items:center;
+      padding:${isMobile ? '7px 12px' : '5px 11px'};
+      background:${s.bg};border:1.5px solid ${s.border};border-radius:999px;
+      cursor:pointer;font-size:${isMobile ? '14px' : '13px'};
+      font-weight:${marked ? '700' : '500'};color:${s.color};white-space:nowrap;
+    ">
+      <span class="sugg-text">${mark}${second}</span>
+    </div>`;
+  }
+
+  function sectionHtml(title, color, items, kind) {
+    if (!items.length) return '';
+    const chips = items.map(w => chipHtml(w, kind)).join('');
+    return `<div style="margin-bottom:10px;">
+      <div style="
+        font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+        color:${color};margin:0 0 6px;display:flex;align-items:center;gap:6px;
+      ">
+        <span style="width:6px;height:6px;border-radius:50%;background:${color};display:inline-block;"></span>
+        ${title}
+        <span style="font-weight:500;opacity:.7;">(${items.length})</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">${chips}</div>
+    </div>`;
+  }
+
   function suggest(word) {
     if (!word) {
       currentEl.textContent = 'Chưa tìm thấy từ';
@@ -212,90 +236,51 @@
     }
 
     const key = getLastSyllable(word);
-    let list = byFirst.get(key) || [];
-
-    // Sắp xếp y chang trang Nối Từ:
-    // 1) từ đã đánh dấu bẫy (trap) lên trước
-    // 2) trong cùng nhóm: ưu tiên từ có ít đường nối tiếp hơn (cụt / gần cụt)
-    list = list.slice().sort((a, b) => {
-      const aTrap = trapSet.has(a) ? 0 : 1;
-      const bTrap = trapSet.has(b) ? 0 : 1;
-      if (aTrap !== bTrap) return aTrap - bTrap;
-      const aCount = continuationsOf(a).length;
-      const bCount = continuationsOf(b).length;
-      return aCount - bCount;
-    });
+    const list = byFirst.get(key) || [];
 
     if (!list.length) {
       resultEl.innerHTML = `<div style="color:#d97706;font-size:13px;padding:6px;">Chưa có gợi ý cho "${key}"</div>`;
       return;
     }
 
-    resultEl.innerHTML = list.map(full => {
-      const second = full.split(/\s+/)[1];
-      const marked = trapSet.has(full);
-      const canContinue = continuationsOf(full).length > 0;
-      const dead = !canContinue;
-      const risky = canContinue && isRiskyTrap(full);
+    // Phân nhóm: bẫy / cụt / không nên dùng / bình thường
+    const traps = [], deads = [], risks = [], oks = [];
+    for (let i = 0; i < list.length; i++) {
+      const full = list[i];
+      if (trapSet.has(full)) { traps.push(full); continue; }
+      if (isDeadEndWord(full)) { deads.push(full); continue; }
+      if (isRiskyTrap(full)) { risks.push(full); continue; }
+      oks.push(full);
+    }
 
-      // Màu & dấu y chang trang Nối Từ:
-      // ★ / 🪤 = bẫy đã đánh dấu | ✗ đỏ = cụt | ✗ cam = không nên dùng (sau là cụt hoặc bẫy)
-      let bg = '#f0fdf4', border = '#86efac', color = '#166534', mark = '';
-      if (marked) {
-        bg = 'rgba(255,215,0,.14)'; border = '#ffd54a'; color = '#b45309';
-        mark = '<span style="font-weight:800;margin-right:3px;">★</span>';
-      } else if (dead) {
-        bg = 'rgba(255,92,122,.15)'; border = 'rgba(255,92,122,.6)'; color = '#e11d48';
-        mark = '<span style="font-weight:800;margin-right:3px;">✗</span>';
-      } else if (risky) {
-        bg = 'rgba(255,183,0,.15)'; border = 'rgba(255,183,0,.6)'; color = '#d97706';
-        mark = '<span style="font-weight:800;margin-right:3px;">✗</span>';
-      }
+    // Trong mỗi nhóm: ưu tiên ít đường nối tiếp hơn
+    const byCont = (a, b) => contCountOf(a) - contCountOf(b);
+    traps.sort(byCont);
+    deads.sort(byCont);
+    risks.sort(byCont);
+    oks.sort(byCont);
 
-      return `<div class="sugg" data-word="${second}" data-full="${full}" style="
-        display:inline-flex; align-items:center; gap:6px;
-        padding: ${isMobile ? '7px 8px 7px 14px' : '5px 6px 5px 12px'}; background: ${bg}; border: 1.5px solid ${border};
-        border-radius: 999px; cursor: pointer; font-size: ${isMobile ? '14.5px' : '13.5px'}; font-weight: ${marked ? '700' : '500'};
-        color: ${color}; transition: all 0.15s; white-space: nowrap;
-      ">
-        <span class="sugg-text">${mark}${second}</span>
-        <button class="act-trap" data-full="${full}" title="Đánh dấu / bỏ đánh dấu bẫy" style="
-          border:none;background:transparent;cursor:pointer;font-size:${isMobile ? '13px' : '12px'};
-          padding:2px;line-height:1;opacity:${marked ? '1' : '0.35'};
-        ">🪤</button>
-        <button class="act-del" data-full="${full}" title="Xoá từ khỏi kho" style="
-          border:none;background:transparent;cursor:pointer;font-size:${isMobile ? '13px' : '12px'};
-          padding:2px;line-height:1;opacity:0.35;color:#dc2626;
-        ">🗑</button>
-      </div>`;
-    }).join('');
+    // Giới hạn hiển thị mỗi nhóm để đỡ rối
+    const lim = isMobile ? 12 : 20;
+    const more = (arr) => arr.length > lim ? arr.length - lim : 0;
 
-    resultEl.querySelectorAll('.act-trap').forEach(btn => {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        const word = btn.dataset.full;
-        const newTrap = !trapSet.has(word);
-        btn.style.opacity = '0.5';
-        toggleTrapRemote(word, newTrap).then(() => suggest(lastWord));
-      };
-    });
-    resultEl.querySelectorAll('.act-del').forEach(btn => {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        const word = btn.dataset.full;
-        if (!confirm(`Xoá "${word}" khỏi kho từ?`)) return;
-        btn.style.opacity = '0.5';
-        deleteWordRemote(word).then(() => suggest(lastWord));
-      };
-    });
+    resultEl.innerHTML =
+      sectionHtml('★ Nên dùng (bẫy)', '#b45309', traps.slice(0, lim), 'trap') +
+      sectionHtml('✗ Cụt — hết đường', '#be123c', deads.slice(0, lim), 'dead') +
+      sectionHtml('Gợi ý thường', '#166534', oks.slice(0, lim), 'ok') +
+      sectionHtml('✗ Không nên dùng', '#d97706', risks.slice(0, lim), 'risk') +
+      ((more(traps) + more(deads) + more(risks) + more(oks)) > 0
+        ? `<div style="font-size:11px;color:#9ca3af;text-align:center;margin-top:4px;">
+            Tổng ${list.length} từ · chỉ hiện tối đa ${lim}/nhóm
+          </div>`
+        : `<div style="font-size:11px;color:#9ca3af;text-align:center;margin-top:4px;">
+            Tổng ${list.length} từ
+          </div>`);
 
     resultEl.querySelectorAll('.sugg').forEach(el => {
       el.onmouseenter = () => { el.style.filter = 'brightness(0.92)'; el.style.transform = 'translateY(-1px)'; };
       el.onmouseleave = () => { el.style.filter = ''; el.style.transform = ''; };
-      el.onclick = (e) => {
-        if (e.target.closest('.act-trap') || e.target.closest('.act-del')) return;
-        // Ưu tiên dán CẢ TỪ (full word) vì noitu.fun yêu cầu nhập đủ 2 âm tiết
-        // Nếu muốn chỉ dán âm tiết sau thì đổi thành el.dataset.word
+      el.onclick = () => {
         const textToPaste = el.dataset.full || el.dataset.word;
         
         // 1. Copy vào clipboard
