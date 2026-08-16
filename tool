@@ -95,12 +95,13 @@
       const word = (typeof entry === 'string') ? entry : entry.w;
       const trap = (typeof entry === 'object' && entry) ? !!entry.trap : false;
       if (!word) continue;
-      if (trap) trapSet.add(word);
-      const parts = word.trim().toLowerCase().split(/\s+/);
+      const norm = word.trim().toLowerCase().replace(/\s+/g, ' ');
+      if (trap) trapSet.add(norm);
+      const parts = norm.split(/\s+/);
       if (parts.length !== 2) continue;
       const first = parts[0];
       if (!byFirst.has(first)) byFirst.set(first, []);
-      byFirst.get(first).push(word);
+      byFirst.get(first).push(norm); // luôn dùng dạng chuẩn hoá để khớp trap / so sánh
     }
     for (const [k, arr] of byFirst) {
       contCount.set(k, arr.length);
@@ -141,20 +142,20 @@
     return w.trim().toLowerCase().split(/\s+/).pop();
   }
   function contCountOf(word) {
+    // Số từ BẮT ĐẦU bằng âm cuối của `word` (không gồm chính word)
     return contCount.get(lastSyllable(word)) || 0;
   }
   function isDeadEndWord(word) {
-    // contCount gồm chính word → cụt khi ≤ 1
-    return contCountOf(word) <= 1;
+    // Cụt = không còn từ nào nối tiếp được sau từ này
+    return contCountOf(word) === 0;
   }
   function isRiskyTrap(word) {
     const ns = lastSyllable(word);
-    const n = contCount.get(ns) || 0;
-    if (n <= 1) return false;
-    if (trapFirst.get(ns)) return true;
     const opts = byFirst.get(ns) || [];
+    if (opts.length === 0) return false;
+    // Đối thủ có thể chọn ngay: từ bẫy HOẶC từ khiến mình bị cụt
+    if (trapFirst.get(ns)) return true;
     for (let i = 0; i < opts.length; i++) {
-      if (opts[i] === word) continue;
       if (isDeadEndWord(opts[i])) return true;
     }
     return false;
