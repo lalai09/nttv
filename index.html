@@ -403,12 +403,16 @@
   const bulkInput = document.getElementById('bulkWords');
   const bulkTrap = document.getElementById('bulkTrap');
 
-  let allWords = []; // mảng {word, trap}, đã sắp xếp
-  let byFirst = new Map();
+  let allWords = []; // mảng {word, trap, first, last}, đã sắp xếp
+  let byFirst = new Map(); // syllable -> entries[]
   let byLast = new Map();
+  let contCountAfter = new Map(); // lastSyllable -> số từ bắt đầu bằng nó
+  let contCountBefore = new Map(); // firstSyllable -> số từ kết thúc bằng nó
+  let trapAfter = new Map(); // lastSyllable -> có từ bẫy bắt đầu bằng nó?
+  let trapBefore = new Map();
   let lookupDir = 'after'; // after | before
+  const LIST_PAGE = 150; // chỉ render tối đa N dòng mỗi lần lọc
 
-  // Firebase key không được chứa . # $ [ ] / — chuẩn hoá key, giữ nguyên từ gốc trong value
   function toKey(word) {
     return encodeURIComponent(word.trim().toLowerCase()).replace(/\./g, '%2E');
   }
@@ -426,59 +430,102 @@
   function rebuildLookupIndex() {
     byFirst = new Map();
     byLast = new Map();
-    allWords.forEach(x => {
+    contCountAfter = new Map();
+    contCountBefore = new Map();
+    trapAfter = new Map();
+    trapBefore = new Map();
+
+    for (let i = 0; i < allWords.length; i++) {
+      const x = allWords[i];
       const parts = normalize(x.word).toLowerCase().split(' ');
-      if (parts.length < 2) return;
-      const first = parts[0], last = parts[parts.length - 1];
-      if (!byFirst.has(first)) byFirst.set(first, []);
-      byFirst.get(first).push(x);
-      if (!byLast.has(last)) byLast.set(last, []);
-      byLast.get(last).push(x);
-    });
+      if (parts.length < 2) { x.first = ''; x.last = ''; continue; }
+      x.first = parts[0];
+      x.last = parts[parts.length - 1];
+      if (!byFirst.has(x.first)) byFirst.set(x.first, []);
+      byFirst.get(x.first).push(x);
+      if (!byLast.has(x.last)) byLast.set(x.last, []);
+      byLast.get(x.last).push(x);
+    }
+
+    // Precompute counts + trap flags (O(syllables) thay vì O(n²) lúc sort)
+    for (const [syl, arr] of byFirst) {
+      contCountAfter.set(syl, arr.length);
+      trapAfter.set(syl, arr.some(e => e.trap));
+    }
+    for (const [syl, arr] of byLast) {
+      contCountBefore.set(syl, arr.length);
+      trapBefore.set(syl, arr.some(e => e.trap));
+    }
   }
 
   function lastSyllable(w) {
+    if (typeof w === 'object' && w.last) return w.last;
     const parts = normalize(w).toLowerCase().split(' ');
     return parts[parts.length - 1];
   }
   function firstSyllable(w) {
+    if (typeof w === 'object' && w.first) return w.first;
     return normalize(w).toLowerCase().split(' ')[0];
   }
-  function nextSyllableOf(word) {
-    return lookupDir === 'after' ? lastSyllable(word) : firstSyllable(word);
+  function nextSyllableOf(entryOrWord) {
+    if (typeof entryOrWord === 'object') {
+      return lookupDir === 'after' ? entryOrWord.last : entryOrWord.first;
+    }
+    return lookupDir === 'after' ? lastSyllable(entryOrWord) : firstSyllable(entryOrWord);
   }
-  function nextMap() {
-    return lookupDir === 'after' ? byFirst : byLast;
+  function contCountOf(entry) {
+    const ns = lookupDir === 'after' ? entry.last : entry.first;
+    const map = lookupDir === 'after' ? contCountAfter : contCountBefore;
+    return map.get(ns) || 0;
   }
-  function continuationsOf(word) {
-    const ns = nextSyllableOf(word);
-    return (nextMap().get(ns) || []).filter(x => x.word !== word);
-  }
-  function isDeadEndWord(word) {
-    return continuationsOf(word).length === 0;
+  function isDeadEndEntry(entry) {
+    // contCount gồm chính nó → cụt khi ≤ 1
+    return contCountOf(entry) <= 1;
   }
   function isRiskyTrap(entry) {
-    const opts = continuationsOf(entry.word);
-    if (opts.length === 0) return false;
-    // sau là cụt HOẶC sau là từ bẫy đã đánh dấu
-    return opts.some(o => isDeadEndWord(o.word) || o.trap);
+    const ns = lookupDir === 'after' ? entry.last : entry.first;
+    if ((lookupDir === 'after' ? contCountAfter : contCountBefore).get(ns) <= 1) return false;
+    // 1) có continuation là bẫy
+    if ((lookupDir === 'after' ? trapAfter : trapBefore).get(ns)) return true;
+    // 2) có continuation cụt: kiểm tra nhanh trên list continuation
+    const map = lookupDir === 'after' ? byFirst : byLast;
+    const opts = map.get(ns) || [];
+    for (let i = 0; i < opts.length; i++) {
+      const o = opts[i];
+      if (o.word === entry.word) continue;
+      if (isDeadEndEntry(o)) return true;
+    }
+    return false;
   }
 
   function render(filter) {
     const f = (filter || '').trim().toLowerCase();
     const trapOnly = trapOnlyEl.checked;
     let filtered = allWords;
-    if (trapOnly) filtered = filtered.filter(x => x.trap);
-    if (f) filtered = filtered.filter(x => x.word.toLowerCase().includes(f));
 
-    countEl.textContent = allWords.length + ' từ' + (f || trapOnly ? ` · ${filtered.length} khớp` : '');
-
-    if (filtered.length === 0) {
-      listEl.innerHTML = `<div class="empty">${allWords.length === 0 ? 'Kho từ đang trống. Thêm từ đầu tiên ở trên.' : 'Không tìm thấy từ khớp.'}</div>`;
+    // Không render 48k dòng khi không lọc — quá nặng DOM
+    if (!f && !trapOnly) {
+      countEl.textContent = allWords.length + ' từ';
+      listEl.innerHTML = `<div class="empty">Kho có <strong>${allWords.length.toLocaleString('vi')}</strong> từ.<br>Gõ ô tìm kiếm hoặc bật «chỉ bẫy» để xem danh sách.</div>`;
       return;
     }
 
-    listEl.innerHTML = filtered.map((x, i) => `
+    if (trapOnly) filtered = filtered.filter(x => x.trap);
+    if (f) filtered = filtered.filter(x => x.word.toLowerCase().includes(f));
+
+    countEl.textContent = allWords.length + ' từ' + ` · ${filtered.length} khớp`;
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = `<div class="empty">Không tìm thấy từ khớp.</div>`;
+      return;
+    }
+
+    const shown = filtered.slice(0, LIST_PAGE);
+    const extra = filtered.length > LIST_PAGE
+      ? `<div class="empty" style="padding:16px;">… và ${filtered.length - LIST_PAGE} từ nữa. Thu hẹp bộ lọc để xem hết.</div>`
+      : '';
+
+    listEl.innerHTML = shown.map((x, i) => `
       <div class="item">
         <div><span class="idx">${String(i + 1).padStart(3, '0')}</span><span class="w">${escapeHtml(x.word)}</span>${x.trap ? '<span class="badge-trap">🪤 bẫy</span>' : ''}</div>
         <div class="actions">
@@ -486,7 +533,7 @@
           <button class="del" data-word="${escapeHtml(x.word)}">Xoá</button>
         </div>
       </div>
-    `).join('');
+    `).join('') + extra;
   }
 
   function escapeHtml(s) {
@@ -495,10 +542,18 @@
 
   wordsRef.on('value', snapshot => {
     const val = snapshot.val() || {};
-    allWords = Object.values(val)
-      .map(v => (typeof v === 'string') ? { word: v, trap: false } : { word: v.w, trap: !!v.trap })
-      .filter(x => x.word)
-      .sort((a, b) => a.word.localeCompare(b.word, 'vi'));
+    const arr = [];
+    for (const k in val) {
+      const v = val[k];
+      if (typeof v === 'string') {
+        if (v) arr.push({ word: v, trap: false });
+      } else if (v && v.w) {
+        arr.push({ word: v.w, trap: !!v.trap });
+      }
+    }
+    // sort nhanh hơn localeCompare('vi') trên 48k phần tử
+    arr.sort((a, b) => a.word < b.word ? -1 : a.word > b.word ? 1 : 0);
+    allWords = arr;
     rebuildLookupIndex();
     render(searchEl.value);
     if (document.getElementById('lookupInput').value.trim()) doLookup();
@@ -526,7 +581,11 @@
     }
   });
 
-  searchEl.addEventListener('input', () => render(searchEl.value));
+  let searchTimer = null;
+  searchEl.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => render(searchEl.value), 180);
+  });
   trapOnlyEl.addEventListener('change', () => render(searchEl.value));
 
   document.getElementById('addOne').addEventListener('click', addSingle);
@@ -564,7 +623,7 @@
   function wordsEndingWith(syllable) {
     const s = syllable.trim().toLowerCase();
     if (!s) return [];
-    return allWords.filter(x => lastSyllable(x.word) === s);
+    return byLast.get(s) || [];
   }
 
   function bulkSetTrap(mark) {
@@ -618,32 +677,35 @@
   function hideLookupMsg() { lookupMsg.className = ''; lookupMsg.textContent = ''; }
 
   function getSuggestions(syllable, limit) {
-    limit = limit || 80;
+    limit = limit || 60;
     const map = lookupDir === 'after' ? byFirst : byLast;
     let list = (map.get(syllable) || []).slice();
-    // Sắp xếp y chang trang Nối Từ: bẫy trước, rồi ít đường nối tiếp hơn
+    // Sắp xếp: bẫy trước → ít đường nối tiếp hơn (dùng count đã cache)
     list.sort((a, b) => {
-      const aTrap = a.trap ? 0 : 1;
-      const bTrap = b.trap ? 0 : 1;
-      if (aTrap !== bTrap) return aTrap - bTrap;
-      return continuationsOf(a.word).length - continuationsOf(b.word).length;
+      if (a.trap !== b.trap) return a.trap ? -1 : 1;
+      return contCountOf(a) - contCountOf(b);
     });
     return list.slice(0, limit);
   }
 
   function renderSuggestions(syllable) {
-    const sugg = getSuggestions(syllable, 80);
+    const map = lookupDir === 'after' ? byFirst : byLast;
+    const total = (map.get(syllable) || []).length;
+    const sugg = getSuggestions(syllable, 60);
     suggestList.innerHTML = '';
     if (sugg.length === 0) {
       suggestList.innerHTML = '<span class="hint" style="margin:0;">Không tìm thấy từ nào có thể nối tiếp 😅</span>';
       return;
     }
-    sugg.forEach(x => {
+
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < sugg.length; i++) {
+      const x = sugg[i];
       const chip = document.createElement('button');
       chip.type = 'button';
-      const canContinue = continuationsOf(x.word).length > 0;
-      const dead = !canContinue;
-      const risky = canContinue && isRiskyTrap(x);
+      const dead = isDeadEndEntry(x);
+      const risky = !dead && isRiskyTrap(x);
+
       if (x.trap) {
         chip.className = 'suggest-chip trap-marked';
         chip.innerHTML = '<span class="star-mark">★</span>' + escapeHtml(x.word);
@@ -677,15 +739,23 @@
 
       chip.addEventListener('click', e => {
         if (e.target.closest('.chip-del')) return;
-        const next = nextSyllableOf(x.word);
+        const next = nextSyllableOf(x);
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(x.word).catch(() => {});
         }
         lookupInput.value = next;
         doLookup();
       });
-      suggestList.appendChild(chip);
-    });
+      frag.appendChild(chip);
+    }
+    if (total > 60) {
+      const more = document.createElement('span');
+      more.className = 'hint';
+      more.style.margin = '4px 0 0';
+      more.textContent = `… và ${total - 60} từ nữa`;
+      frag.appendChild(more);
+    }
+    suggestList.appendChild(frag);
   }
 
   function doLookup() {
@@ -696,7 +766,8 @@
       return;
     }
     syllable = syllable.split(' ').pop();
-    const total = getSuggestions(syllable, 99999).length;
+    const map = lookupDir === 'after' ? byFirst : byLast;
+    const total = (map.get(syllable) || []).length;
     if (total === 0) {
       showLookupMsg('❌ Không có từ nào ' + (lookupDir === 'after' ? 'bắt đầu' : 'kết thúc') + ' bằng "' + syllable + '".', 'err');
       suggestList.innerHTML = '<span class="hint" style="margin:0;">Không tìm thấy từ nào có thể nối tiếp 😅</span>';
