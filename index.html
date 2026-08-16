@@ -273,6 +273,19 @@
     background:var(--trap-bg); border-color:#ffd54a; color:var(--trap); font-weight:700;
   }
   .suggest-chip .x-mark, .suggest-chip .star-mark{ font-weight:800; margin-right:4px; }
+  .suggest-chip{ padding-right:36px; }
+  .suggest-chip .chip-del{
+    position:absolute; right:6px; top:50%; transform:translateY(-50%);
+    width:22px; height:22px; border-radius:50%;
+    background:rgba(255,255,255,.08); color:var(--sub);
+    font-size:12px; font-weight:800; line-height:1;
+    display:flex; align-items:center; justify-content:center;
+    border:none; cursor:pointer; opacity:.5; padding:0;
+  }
+  .suggest-chip .chip-del:hover{
+    background:var(--danger); color:#fff; opacity:1;
+    transform:translateY(-50%) scale(1.12);
+  }
   #lookupMsg{
     margin-top:12px; padding:10px 14px; border-radius:10px; font-size:13.5px; font-weight:600;
     display:none;
@@ -647,8 +660,23 @@
         chip.className = 'suggest-chip';
         chip.textContent = x.word;
       }
-      chip.addEventListener('click', () => {
-        // copy âm tiết kế tiếp (để nối tiếp)
+
+      const delBtn = document.createElement('span');
+      delBtn.className = 'chip-del';
+      delBtn.textContent = '✕';
+      delBtn.title = 'Xoá "' + x.word + '" khỏi kho';
+      delBtn.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!confirm('Xoá "' + x.word + '" khỏi kho từ?')) return;
+        wordsRef.child(toKey(x.word)).remove()
+          .then(() => setStatus('Đã xoá "' + x.word + '"'))
+          .catch(err => setStatus('Lỗi xoá: ' + err.message, true));
+      });
+      chip.appendChild(delBtn);
+
+      chip.addEventListener('click', e => {
+        if (e.target.closest('.chip-del')) return;
         const next = nextSyllableOf(x.word);
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(x.word).catch(() => {});
