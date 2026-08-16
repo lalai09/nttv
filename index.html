@@ -365,18 +365,24 @@
     <div id="trapStatus"></div>
   </div>
 
-  <div class="panel">
-    <h2>Tìm trong kho</h2>
-    <input type="text" id="search" placeholder="Gõ để lọc danh sách…" autocomplete="off">
-    <label class="trap-check" style="margin-top:10px;">
-      <input type="checkbox" id="trapOnly">
-      <span>🪤 Chỉ hiện từ đã đánh dấu bẫy</span>
-    </label>
-  </div>
-
-  <div class="list" id="list">
-    <div class="empty">Đang tải kho từ…</div>
-  </div>
+  <details class="panel vault-details" id="vaultDetails">
+    <summary class="vault-summary">
+      <span class="vault-title">Kho từ đầy đủ</span>
+      <span class="vault-hint">bấm để mở / thu gọn</span>
+    </summary>
+    <div class="vault-body">
+      <div style="margin-bottom:14px;">
+        <input type="text" id="search" placeholder="Gõ để lọc danh sách…" autocomplete="off" style="width:100%;">
+        <label class="trap-check" style="margin-top:10px;">
+          <input type="checkbox" id="trapOnly">
+          <span>🪤 Chỉ hiện từ đã đánh dấu bẫy</span>
+        </label>
+      </div>
+      <div class="list" id="list">
+        <div class="empty">Đang tải kho từ…</div>
+      </div>
+    </div>
+  </details>
 </div>
 
 <script>
@@ -479,17 +485,17 @@
     return map.get(ns) || 0;
   }
   function isDeadEndEntry(entry) {
-    // contCount gồm chính nó → cụt khi ≤ 1
-    return contCountOf(entry) <= 1;
+    // Cụt = không còn từ nào nối tiếp (contCount không gồm chính entry)
+    return contCountOf(entry) === 0;
   }
   function isRiskyTrap(entry) {
     const ns = lookupDir === 'after' ? entry.last : entry.first;
-    if ((lookupDir === 'after' ? contCountAfter : contCountBefore).get(ns) <= 1) return false;
-    // 1) có continuation là bẫy
-    if ((lookupDir === 'after' ? trapAfter : trapBefore).get(ns)) return true;
-    // 2) có continuation cụt: kiểm tra nhanh trên list continuation
     const map = lookupDir === 'after' ? byFirst : byLast;
     const opts = map.get(ns) || [];
+    if (opts.length === 0) return false;
+    // 1) có continuation là bẫy
+    if ((lookupDir === 'after' ? trapAfter : trapBefore).get(ns)) return true;
+    // 2) có continuation cụt
     for (let i = 0; i < opts.length; i++) {
       const o = opts[i];
       if (o.word === entry.word) continue;
