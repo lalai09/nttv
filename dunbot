@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Nối Từ Helper (noitu.fun)
 // @namespace    http://tampermonkey.net/
-// @version      1.18
-// @description  Gợi ý nối từ + tự dán + tự gửi ngay lập tức khi có từ mới + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + hiện từ đã dùng + tự bỏ từ không dùng được sau 4s (lưu cả 2 âm tiết) + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua (ESC) khi không tìm thấy từ để nối
+// @version      1.20
+// @description  Gợi ý nối từ + tự dán + tự gửi ngay lập tức khi có từ mới + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + hiện từ đã dùng + tự bỏ từ không dùng được sau 4s + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua (ESC) khi không tìm thấy từ để nối + ghi lại từ đối thủ dùng mà mình chưa có trong kho + tách 2 bảng riêng (Gợi ý / Từ lỗi & Từ mới)
 // @author       You
 // @match        https://www.noitu.fun/*
 // @match        https://noitu.fun/*
@@ -13,34 +13,35 @@
 (function () {
   'use strict';
 
-  const HELPER_ID = 'noitu-helper';
+  const HELPER_ID = 'noitu-helper';        // bảng 1: gợi ý
+  const HELPER2_ID = 'noitu-helper-2';     // bảng 2: từ lỗi + từ mới
   const POS_KEY = 'noitu_helper_pos';
+  const POS_KEY2 = 'noitu_helper_pos2';
   const AUTO_KEY = 'noitu_helper_auto';
   const BAD_KEY = 'noitu_helper_bad_words';
+  const NEW_KEY = 'noitu_helper_new_words';
+  const COLLAPSE2_KEY = 'noitu_helper_collapse2';
 
-  function loadPosition() {
+  function loadJSON(key) {
     try {
-      const raw = localStorage.getItem(POS_KEY);
+      const raw = localStorage.getItem(key);
       return raw ? JSON.parse(raw) : null;
     } catch (e) { return null; }
   }
-
-  function savePosition(left, top) {
-    try {
-      localStorage.setItem(POS_KEY, JSON.stringify({ left, top }));
-    } catch (e) {}
+  function saveJSON(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
   }
+
+  function loadPosition() { return loadJSON(POS_KEY); }
+  function savePosition(left, top) { saveJSON(POS_KEY, { left, top }); }
+  function loadPosition2() { return loadJSON(POS_KEY2); }
+  function savePosition2(left, top) { saveJSON(POS_KEY2, { left, top }); }
 
   function loadAuto() {
-    try {
-      return localStorage.getItem(AUTO_KEY) === '1';
-    } catch (e) { return false; }
+    try { return localStorage.getItem(AUTO_KEY) === '1'; } catch (e) { return false; }
   }
-
   function saveAuto(on) {
-    try {
-      localStorage.setItem(AUTO_KEY, on ? '1' : '0');
-    } catch (e) {}
+    try { localStorage.setItem(AUTO_KEY, on ? '1' : '0'); } catch (e) {}
   }
 
   function loadBadWords() {
@@ -49,22 +50,41 @@
       return raw ? new Set(JSON.parse(raw)) : new Set();
     } catch (e) { return new Set(); }
   }
+  function saveBadWords(set) { saveJSON(BAD_KEY, [...set]); }
 
-  function saveBadWords(set) {
+  function loadNewWords() {
     try {
-      localStorage.setItem(BAD_KEY, JSON.stringify([...set]));
-    } catch (e) {}
+      const raw = localStorage.getItem(NEW_KEY);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch (e) { return new Set(); }
+  }
+  function saveNewWords(set) { saveJSON(NEW_KEY, [...set]); }
+
+  function loadCollapse2() {
+    try { return localStorage.getItem(COLLAPSE2_KEY) === '1'; } catch (e) { return false; }
+  }
+  function saveCollapse2(on) {
+    try { localStorage.setItem(COLLAPSE2_KEY, on ? '1' : '0'); } catch (e) {}
   }
 
   function createHelper() {
-    if (document.getElementById(HELPER_ID)) return;
+    if (document.getElementById(HELPER_ID) && document.getElementById(HELPER2_ID)) return;
+    // Nếu một trong hai bảng bị mất (do trang re-render xóa DOM), dọn bảng còn lại rồi tạo lại cả hai
+    const existing1 = document.getElementById(HELPER_ID);
+    const existing2 = document.getElementById(HELPER2_ID);
+    if (existing1) existing1.remove();
+    if (existing2) existing2.remove();
 
     const isMobile = window.matchMedia('(max-width: 640px)').matches || ('ontouchstart' in window && window.innerWidth < 900);
     const savedPos = loadPosition();
+    const savedPos2 = loadPosition2();
     let autoEnabled = loadAuto();
-    const usedWords = new Set();
+    const usedWords = new Set();      // từ do CHÍNH mình/auto đã chọn gửi đi
+    const allSeenWords = new Set();   // mọi từ đã xuất hiện trên bàn (mình + đối thủ)
     const badWords = loadBadWords();
+    const newWords = loadNewWords();  // từ đối thủ dùng mà kho chưa có
 
+    // ============ BẢNG 1: GỢI Ý ============
     const panel = document.createElement('div');
     panel.id = HELPER_ID;
     panel.innerHTML = `
@@ -79,16 +99,7 @@
       </div>
       <div id="noitu-body">
         <div id="noitu-current" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:16px;font-weight:600;text-align:center;border:1px solid #6ee7b7;color:#065f46;">Đang tìm từ...</div>
-        <div id="noitu-result" style="display:flex;flex-wrap:wrap;gap:8px;max-height:${isMobile ? '32vh' : '320px'};overflow-y:auto;padding:2px;-webkit-overflow-scrolling:touch;"></div>
-
-        <div id="noitu-bad-box" style="margin-top:12px;border-top:1px dashed #d1d5db;padding-top:10px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <div style="font-size:12px;font-weight:700;color:#6b7280;">🚫 Từ không dùng được <span id="noitu-bad-count">(0)</span></div>
-            <button id="noitu-clear-bad" style="border:none;background:#fef2f2;color:#b91c1c;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Xóa hết</button>
-          </div>
-          <div id="noitu-bad-list" style="display:flex;flex-wrap:wrap;gap:5px;max-height:90px;overflow-y:auto;font-size:12px;"></div>
-        </div>
-
+        <div id="noitu-result" style="display:flex;flex-wrap:wrap;gap:8px;max-height:${isMobile ? '32vh' : '360px'};overflow-y:auto;padding:2px;-webkit-overflow-scrolling:touch;"></div>
         <div style="margin-top:10px;font-size:11px;color:#6b7280;text-align:center;">Chạm chữ → tự dán + gửi · Hover xem chữ nối tiếp</div>
       </div>
     `;
@@ -128,6 +139,74 @@
 
     document.body.appendChild(panel);
 
+    // ============ BẢNG 2: TỪ LỖI & TỪ MỚI ============
+    const panel2 = document.createElement('div');
+    panel2.id = HELPER2_ID;
+    let collapsed2 = loadCollapse2();
+    panel2.innerHTML = `
+      <div id="noitu-header2" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${collapsed2 ? '0' : '10px'};cursor:grab;">
+        <div style="font-weight:700;font-size:14px;">🗂️ Từ lỗi &amp; Từ mới</div>
+        <button id="noitu-toggle2" style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:8px;width:26px;height:26px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">${collapsed2 ? '+' : '−'}</button>
+      </div>
+      <div id="noitu-body2" style="display:${collapsed2 ? 'none' : 'block'};">
+        <div id="noitu-bad-box">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-size:12px;font-weight:700;color:#6b7280;">🚫 Từ không dùng được <span id="noitu-bad-count">(0)</span></div>
+            <button id="noitu-clear-bad" style="border:none;background:#fef2f2;color:#b91c1c;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Xóa hết</button>
+          </div>
+          <div id="noitu-bad-list" style="display:flex;flex-wrap:wrap;gap:5px;max-height:120px;overflow-y:auto;font-size:12px;"></div>
+        </div>
+
+        <div id="noitu-new-box" style="margin-top:14px;border-top:1px dashed #d1d5db;padding-top:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-size:12px;font-weight:700;color:#6b7280;">🆕 Từ mới từ đối thủ <span id="noitu-new-count">(0)</span></div>
+            <div style="display:flex;gap:4px;">
+              <button id="noitu-copy-new" style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
+              <button id="noitu-clear-new" style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Xóa hết</button>
+            </div>
+          </div>
+          <div id="noitu-new-list" style="display:flex;flex-wrap:wrap;gap:5px;max-height:120px;overflow-y:auto;font-size:12px;"></div>
+        </div>
+      </div>
+    `;
+
+    Object.assign(panel2.style, {
+      position: 'fixed',
+      background: '#ffffff',
+      border: '2px solid #3b82f6',
+      borderRadius: '16px',
+      padding: isMobile ? '12px 14px' : '16px',
+      zIndex: '999998',
+      boxShadow: '0 12px 40px rgba(59,130,246,0.22)',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      userSelect: 'none',
+      touchAction: 'none',
+      boxSizing: 'border-box',
+      width: isMobile ? 'auto' : '300px',
+      maxWidth: isMobile ? 'none' : '300px'
+    });
+
+    if (savedPos2 && savedPos2.left && savedPos2.top) {
+      panel2.style.left = savedPos2.left;
+      panel2.style.top = savedPos2.top;
+      panel2.style.right = 'auto';
+      panel2.style.bottom = 'auto';
+    } else if (isMobile) {
+      panel2.style.bottom = '12px';
+      panel2.style.right = '8px';
+      panel2.style.left = 'auto';
+      panel2.style.top = 'auto';
+      // Trên mobile để tránh chồng lấn bảng 1, đặt bảng 2 co gọn mặc định
+    } else {
+      panel2.style.top = '90px';
+      panel2.style.right = '380px';
+      panel2.style.left = 'auto';
+      panel2.style.bottom = 'auto';
+    }
+
+    document.body.appendChild(panel2);
+
+    // ---- refs bảng 1 ----
     const currentEl = document.getElementById('noitu-current');
     const resultEl = document.getElementById('noitu-result');
     const statusEl = document.getElementById('noitu-status');
@@ -136,9 +215,18 @@
     const headerEl = document.getElementById('noitu-header');
     const autoBtn = document.getElementById('noitu-auto');
     const clearBtn = document.getElementById('noitu-clear');
+
+    // ---- refs bảng 2 ----
+    const header2El = document.getElementById('noitu-header2');
+    const body2El = document.getElementById('noitu-body2');
+    const toggle2Btn = document.getElementById('noitu-toggle2');
     const badListEl = document.getElementById('noitu-bad-list');
     const badCountEl = document.getElementById('noitu-bad-count');
     const clearBadBtn = document.getElementById('noitu-clear-bad');
+    const newListEl = document.getElementById('noitu-new-list');
+    const newCountEl = document.getElementById('noitu-new-count');
+    const clearNewBtn = document.getElementById('noitu-clear-new');
+    const copyNewBtn = document.getElementById('noitu-copy-new');
 
     function updateAutoBtn() {
       if (autoEnabled) {
@@ -164,6 +252,7 @@
     clearBtn.addEventListener('click', e => {
       e.stopPropagation();
       usedWords.clear();
+      allSeenWords.clear();
       statusEl.textContent = 'Đã xóa lịch sử phiên';
       statusEl.style.color = '#d97706';
       setTimeout(() => {
@@ -191,6 +280,44 @@
       }, 1500);
     });
 
+    clearNewBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      newWords.clear();
+      saveNewWords(newWords);
+      renderNewList();
+    });
+
+    copyNewBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const text = [...newWords].join('\n');
+      if (!text) return;
+      const done = () => {
+        const old = copyNewBtn.textContent;
+        copyNewBtn.textContent = 'Đã copy!';
+        setTimeout(() => { copyNewBtn.textContent = old; }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    });
+
+    function fallbackCopy(text, cb) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        cb();
+      } catch (e) {}
+    }
+
     function renderBadList() {
       badCountEl.textContent = `(${badWords.size})`;
       if (badWords.size === 0) {
@@ -202,6 +329,18 @@
       }).join('');
     }
     renderBadList();
+
+    function renderNewList() {
+      newCountEl.textContent = `(${newWords.size})`;
+      if (newWords.size === 0) {
+        newListEl.innerHTML = '<span style="color:#9ca3af;font-size:11px;">Chưa có từ nào</span>';
+        return;
+      }
+      newListEl.innerHTML = [...newWords].map(w => {
+        return `<span title="${w}" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;padding:2px 8px;border-radius:999px;font-size:11px;">${w}</span>`;
+      }).join('');
+    }
+    renderNewList();
 
     let collapsed = isMobile;
     function applyCollapsed() {
@@ -216,6 +355,20 @@
       applyCollapsed();
     });
 
+    function applyCollapsed2() {
+      body2El.style.display = collapsed2 ? 'none' : 'block';
+      header2El.style.marginBottom = collapsed2 ? '0' : '10px';
+      toggle2Btn.textContent = collapsed2 ? '+' : '−';
+      saveCollapse2(collapsed2);
+    }
+    applyCollapsed2();
+
+    toggle2Btn.addEventListener('click', e => {
+      e.stopPropagation();
+      collapsed2 = !collapsed2;
+      applyCollapsed2();
+    });
+
     // ===== Kho từ =====
     const FIREBASE_DB_URL = "https://khotu-fc3e7-default-rtdb.asia-southeast1.firebasedatabase.app";
     const byFirst = new Map();
@@ -227,6 +380,7 @@
     let autoTimer = null;
     let checkAcceptTimer = null;
     let lastAttemptedWord = null;
+    let justSubmittedByMe = false; // cờ đánh dấu lượt kế tiếp là do chính mình vừa gửi
     let escTimer = null;
 
     statusEl.textContent = 'Đang tải kho từ...';
@@ -290,13 +444,13 @@
     function isDeadEndWord(word) {
       const ns = lastSyllable(word);
       const opts = byFirst.get(ns) || [];
-      return opts.filter(w => w !== word && !usedWords.has(w) && !badWords.has(w)).length === 0;
+      return opts.filter(w => w !== word && !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w)).length === 0;
     }
 
     function isRiskyTrap(word) {
       const ns = lastSyllable(word);
       const opts = byFirst.get(ns) || [];
-      const available = opts.filter(w => !usedWords.has(w) && !badWords.has(w));
+      const available = opts.filter(w => !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w));
       if (!available.length) return false;
       if (trapFirst.get(ns)) return true;
       return available.some(w => isDeadEndWord(w));
@@ -316,7 +470,7 @@
     function findCurrentWord() {
       const candidates = [];
       document.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b').forEach(el => {
-        if (el.closest('#noitu-helper')) return;
+        if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2')) return;
         const text = (el.innerText || el.textContent || '').trim();
         if (!isValidTwoSyllable(text) || el.offsetParent === null) return;
         const style = window.getComputedStyle(el);
@@ -390,7 +544,7 @@
       badWords.add(norm);
       saveBadWords(badWords);
       renderBadList();
-      statusEl.textContent = `Đã lưu từ lỗi (2 âm tiết): ${norm}`;
+      statusEl.textContent = `Đã lưu từ lỗi: ${norm}`;
       statusEl.style.color = '#dc2626';
       setTimeout(() => {
         if (isReady) {
@@ -400,11 +554,24 @@
       }, 2000);
     }
 
+    // Ghi lại từ đối thủ dùng mà kho chưa có
+    function markAsNewFromOpponent(word) {
+      if (!word) return;
+      const norm = normWord(word);
+      if (!norm || norm.split(' ').length !== 2) return;
+      const first = norm.split(' ')[0];
+      const known = (byFirst.get(first) || []).includes(norm);
+      if (known) return; // kho đã có, không cần ghi
+      if (newWords.has(norm)) return;
+      newWords.add(norm);
+      saveNewWords(newWords);
+      renderNewList();
+    }
+
     // ===== Tự bỏ qua (ESC) khi không tìm thấy từ để nối =====
     function sendEscape() {
       clearTimeout(escTimer);
 
-      // Thử gửi sự kiện phím ESC tới input và document
       const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
       const targets = [input, document].filter(Boolean);
       targets.forEach(target => {
@@ -412,7 +579,6 @@
         target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
       });
 
-      // Fallback: tìm nút "Bỏ qua"/"Skip"/"Pass" nếu có trên trang và click vào
       const skipBtn = Array.from(document.querySelectorAll('button')).find(b =>
         /bỏ qua|skip|pass|esc/i.test((b.textContent || '').trim())
       );
@@ -437,10 +603,6 @@
       }, delay);
     }
 
-    // Kiểm tra xem lượt gửi trước có thất bại hay không:
-    // - Từ hiện tại trên trang KHÔNG đổi (vẫn là lastWord), HOẶC
-    // - Input vẫn còn giữ nguyên text đã gửi (chưa bị xóa/clear bởi hệ thống), HOẶC
-    // - Có phần tử báo lỗi xuất hiện trên trang
     function detectSubmitFailed(attemptedWord) {
       const current = findCurrentWord();
       if (current && normWord(current) === normWord(lastWord)) return true;
@@ -449,7 +611,7 @@
       if (input && input.value && normWord(input.value) === normWord(attemptedWord)) return true;
 
       const errEl = Array.from(document.querySelectorAll('div, span, p')).find(el => {
-        if (el.closest('#noitu-helper')) return false;
+        if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2')) return false;
         const t = (el.innerText || el.textContent || '').trim().toLowerCase();
         return t && /không hợp lệ|không có trong|sai|lỗi|invalid|not found/.test(t) && t.length < 80;
       });
@@ -466,13 +628,10 @@
 
       const chips = resultEl.querySelectorAll('.sugg');
       if (!chips.length) {
-        // Không có gợi ý nào hiển thị (kể cả rỗng hoàn toàn) → tự bỏ qua
         scheduleEscape();
         return;
       }
 
-      // Thứ tự ưu tiên mới:
-      // 1. Cụt → 2. Bẫy → 3. Thường → 4. Không nên dùng (chỉ khi hết đường)
       let best = null;
 
       for (const el of chips) {
@@ -488,14 +647,12 @@
           if (el.dataset.kind === 'ok') { best = el; break; }
         }
       }
-      // Chỉ khi không còn lựa chọn nào khác mới dùng "risk"
       if (!best) {
         for (const el of chips) {
           if (el.dataset.kind === 'risk') { best = el; break; }
         }
       }
       if (!best) {
-        // Chỉ còn chip "used" (đã dùng) → không còn từ khả dụng → tự bỏ qua
         scheduleEscape();
         return;
       }
@@ -505,6 +662,7 @@
         if (!autoEnabled) return;
         const full = best.dataset.full;
         lastAttemptedWord = full;
+        justSubmittedByMe = true;
         usedWords.add(full);
         autoPasteAndSubmit(full);
 
@@ -518,6 +676,7 @@
           if (lastAttemptedWord && detectSubmitFailed(lastAttemptedWord)) {
             markAsBad(lastAttemptedWord);
             usedWords.delete(lastAttemptedWord);
+            justSubmittedByMe = false;
             suggest(lastWord);
             setTimeout(() => {
               if (autoEnabled) tryAutoPlay();
@@ -542,12 +701,11 @@
 
       const key = getLastSyllable(word);
       const allForKey = byFirst.get(key) || [];
-      const available = allForKey.filter(w => !usedWords.has(w) && !badWords.has(w));
-      const usedOnes  = allForKey.filter(w => usedWords.has(w));
+      const available = allForKey.filter(w => !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w));
+      const usedOnes  = allForKey.filter(w => usedWords.has(w) || allSeenWords.has(w));
 
       if (!available.length && !usedOnes.length) {
         resultEl.innerHTML = `<div style="color:#d97706;font-size:13px;padding:6px;">Chưa có gợi ý cho "${key}"</div>`;
-        // Không có từ nào để nối → tự động bỏ qua (ESC) nếu đang bật Tự chọn
         if (autoEnabled) scheduleEscape();
         return;
       }
@@ -588,7 +746,7 @@
           el.style.transform = 'translateY(-1px)';
           const full = el.dataset.full;
           const nextKey = getLastSyllable(full);
-          const nextList = (byFirst.get(nextKey) || []).filter(w => !usedWords.has(w) && !badWords.has(w));
+          const nextList = (byFirst.get(nextKey) || []).filter(w => !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w));
           if (!nextList.length) {
             tooltip.innerHTML = `<div style="opacity:.7">Không còn từ nối tiếp sau "<b>${nextKey}</b>"</div>`;
           } else {
@@ -628,6 +786,7 @@
         el.onclick = () => {
           const full = el.dataset.full;
           lastAttemptedWord = full;
+          justSubmittedByMe = true;
           usedWords.add(full);
           autoPasteAndSubmit(full);
           const oldBg = el.style.background;
@@ -641,6 +800,7 @@
             if (lastAttemptedWord && detectSubmitFailed(lastAttemptedWord)) {
               markAsBad(lastAttemptedWord);
               usedWords.delete(lastAttemptedWord);
+              justSubmittedByMe = false;
               suggest(lastWord);
               if (autoEnabled) {
                 setTimeout(() => {
@@ -686,49 +846,64 @@
     function tick() {
       const word = findCurrentWord();
       if (word && word !== lastWord) {
+        const norm = normWord(word);
+        const isTwoSyllable = norm && norm.split(' ').length === 2;
+
+        if (isTwoSyllable && !justSubmittedByMe) {
+          markAsNewFromOpponent(norm);
+        }
+        justSubmittedByMe = false;
+
         lastWord = word;
         lastAttemptedWord = null;
+        if (isTwoSyllable) allSeenWords.add(norm);
         clearTimeout(checkAcceptTimer);
         clearTimeout(escTimer);
         suggest(word);
       }
     }
 
-    // Kéo thả
-    let isDragging = false, ox, oy;
-    function startDrag(x, y, target) {
-      if (target.closest('.sugg') || target.closest('#noitu-toggle') || target.closest('#noitu-auto') || target.closest('#noitu-clear') || target.closest('#noitu-clear-bad')) return false;
-      const rect = panel.getBoundingClientRect();
-      ox = x - rect.left;
-      oy = y - rect.top;
-      panel.style.left = rect.left + 'px';
-      panel.style.top = rect.top + 'px';
-      panel.style.right = 'auto';
-      panel.style.bottom = 'auto';
-      return true;
-    }
-    function moveDrag(x, y) {
-      const w = panel.offsetWidth, h = panel.offsetHeight;
-      let left = Math.max(4, Math.min(window.innerWidth - w - 4, x - ox));
-      let top = Math.max(4, Math.min(window.innerHeight - h - 4, y - oy));
-      panel.style.left = left + 'px';
-      panel.style.top = top + 'px';
-      savePosition(panel.style.left, panel.style.top);
+    // ===== Kéo thả (dùng chung cho cả 2 bảng) =====
+    function attachDrag(panelEl, headerEl, savePosFn, excludeSelectors) {
+      let dragging = false, ox = 0, oy = 0;
+
+      function start(x, y, target) {
+        if (excludeSelectors.some(sel => target.closest(sel))) return false;
+        const rect = panelEl.getBoundingClientRect();
+        ox = x - rect.left;
+        oy = y - rect.top;
+        panelEl.style.left = rect.left + 'px';
+        panelEl.style.top = rect.top + 'px';
+        panelEl.style.right = 'auto';
+        panelEl.style.bottom = 'auto';
+        return true;
+      }
+      function move(x, y) {
+        const w = panelEl.offsetWidth, h = panelEl.offsetHeight;
+        let left = Math.max(4, Math.min(window.innerWidth - w - 4, x - ox));
+        let top = Math.max(4, Math.min(window.innerHeight - h - 4, y - oy));
+        panelEl.style.left = left + 'px';
+        panelEl.style.top = top + 'px';
+        savePosFn(panelEl.style.left, panelEl.style.top);
+      }
+
+      panelEl.addEventListener('mousedown', e => { dragging = start(e.clientX, e.clientY, e.target); });
+      document.addEventListener('mousemove', e => { if (dragging) move(e.clientX, e.clientY); });
+      document.addEventListener('mouseup', () => dragging = false);
+
+      headerEl.addEventListener('touchstart', e => {
+        dragging = start(e.touches[0].clientX, e.touches[0].clientY, e.target);
+      }, { passive: true });
+      panelEl.addEventListener('touchmove', e => {
+        if (!dragging) return;
+        move(e.touches[0].clientX, e.touches[0].clientY);
+        e.preventDefault();
+      }, { passive: false });
+      panelEl.addEventListener('touchend', () => dragging = false);
     }
 
-    panel.addEventListener('mousedown', e => { isDragging = startDrag(e.clientX, e.clientY, e.target); });
-    document.addEventListener('mousemove', e => { if (isDragging) moveDrag(e.clientX, e.clientY); });
-    document.addEventListener('mouseup', () => isDragging = false);
-
-    headerEl.addEventListener('touchstart', e => {
-      isDragging = startDrag(e.touches[0].clientX, e.touches[0].clientY, e.target);
-    }, { passive: true });
-    panel.addEventListener('touchmove', e => {
-      if (!isDragging) return;
-      moveDrag(e.touches[0].clientX, e.touches[0].clientY);
-      e.preventDefault();
-    }, { passive: false });
-    panel.addEventListener('touchend', () => isDragging = false);
+    attachDrag(panel, headerEl, savePosition, ['.sugg', '#noitu-toggle', '#noitu-auto', '#noitu-clear']);
+    attachDrag(panel2, header2El, savePosition2, ['#noitu-toggle2', '#noitu-clear-bad', '#noitu-clear-new', '#noitu-copy-new']);
 
     tick();
     if (!window.__noituTickInterval) window.__noituTickInterval = setInterval(tick, 1100);
@@ -737,7 +912,7 @@
   createHelper();
   if (!window.__noituWatchdog) {
     window.__noituWatchdog = setInterval(() => {
-      if (!document.getElementById(HELPER_ID)) createHelper();
+      if (!document.getElementById(HELPER_ID) || !document.getElementById(HELPER2_ID)) createHelper();
     }, 1500);
   }
 })();
