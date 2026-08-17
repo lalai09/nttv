@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Nối Từ Helper (noitu.fun)
 // @namespace    http://tampermonkey.net/
-// @version      1.15
-// @description  Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + hiện từ đã dùng + tự bỏ từ không dùng được sau 3.5s + chỉ dùng "không nên dùng" khi hết đường
+// @version      1.18
+// @description  Gợi ý nối từ + tự dán + tự gửi ngay lập tức khi có từ mới + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + hiện từ đã dùng + tự bỏ từ không dùng được sau 4s (lưu cả 2 âm tiết) + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua (ESC) khi không tìm thấy từ để nối
 // @author       You
 // @match        https://www.noitu.fun/*
 // @match        https://noitu.fun/*
@@ -198,8 +198,7 @@
         return;
       }
       badListEl.innerHTML = [...badWords].map(w => {
-        const second = w.split(/\s+/)[1] || w;
-        return `<span style="background:#f3f4f6;border:1px solid #d1d5db;color:#6b7280;padding:2px 8px;border-radius:999px;font-size:11px;">${second}</span>`;
+        return `<span title="${w}" style="background:#f3f4f6;border:1px solid #d1d5db;color:#6b7280;padding:2px 8px;border-radius:999px;font-size:11px;">${w}</span>`;
       }).join('');
     }
     renderBadList();
@@ -228,12 +227,17 @@
     let autoTimer = null;
     let checkAcceptTimer = null;
     let lastAttemptedWord = null;
+    let escTimer = null;
 
     statusEl.textContent = 'Đang tải kho từ...';
     statusEl.style.color = '#d97706';
 
+    function normWord(w) {
+      return (w || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
     function lastSyllable(w) {
-      return w.trim().toLowerCase().split(/\s+/).pop();
+      return normWord(w).split(' ').pop();
     }
 
     function buildIndex(entries) {
@@ -245,9 +249,9 @@
         const word = (typeof entry === 'string') ? entry : entry.w;
         const trap = (typeof entry === 'object' && entry) ? !!entry.trap : false;
         if (!word) continue;
-        const norm = word.trim().toLowerCase().replace(/\s+/g, ' ');
+        const norm = normWord(word);
         if (trap) trapSet.add(norm);
-        const parts = norm.split(/\s+/);
+        const parts = norm.split(' ');
         if (parts.length !== 2) continue;
         const first = parts[0];
         if (!byFirst.has(first)) byFirst.set(first, []);
@@ -300,7 +304,7 @@
 
     function getLastSyllable(text) {
       if (!text) return '';
-      return text.trim().toLowerCase().replace(/[.,!?]/g, '').split(/\s+/).pop() || '';
+      return normWord(text.replace(/[.,!?]/g, '')).split(' ').pop() || '';
     }
 
     function isValidTwoSyllable(text) {
@@ -379,11 +383,14 @@
     }
 
     function markAsBad(word) {
-      if (!word || badWords.has(word)) return;
-      badWords.add(word);
+      if (!word) return;
+      const norm = normWord(word);
+      if (!norm || norm.split(' ').length !== 2) return; // chỉ lưu cụm đúng 2 âm tiết
+      if (badWords.has(norm)) return;
+      badWords.add(norm);
       saveBadWords(badWords);
       renderBadList();
-      statusEl.textContent = `Đã lưu từ lỗi: ${word.split(' ')[1]}`;
+      statusEl.textContent = `Đã lưu từ lỗi (2 âm tiết): ${norm}`;
       statusEl.style.color = '#dc2626';
       setTimeout(() => {
         if (isReady) {
@@ -393,13 +400,76 @@
       }, 2000);
     }
 
+    // ===== Tự bỏ qua (ESC) khi không tìm thấy từ để nối =====
+    function sendEscape() {
+      clearTimeout(escTimer);
+
+      // Thử gửi sự kiện phím ESC tới input và document
+      const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
+      const targets = [input, document].filter(Boolean);
+      targets.forEach(target => {
+        target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
+        target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
+      });
+
+      // Fallback: tìm nút "Bỏ qua"/"Skip"/"Pass" nếu có trên trang và click vào
+      const skipBtn = Array.from(document.querySelectorAll('button')).find(b =>
+        /bỏ qua|skip|pass|esc/i.test((b.textContent || '').trim())
+      );
+      if (skipBtn) skipBtn.click();
+
+      statusEl.textContent = 'Đã tự bỏ qua (ESC)';
+      statusEl.style.color = '#dc2626';
+      setTimeout(() => {
+        if (isReady) {
+          statusEl.textContent = `Sẵn sàng (${byFirst.size} âm)`;
+          statusEl.style.color = '#10b981';
+        }
+      }, 2000);
+    }
+
+    function scheduleEscape() {
+      clearTimeout(escTimer);
+      const delay = 500 + Math.random() * 400;
+      escTimer = setTimeout(() => {
+        if (!autoEnabled) return;
+        sendEscape();
+      }, delay);
+    }
+
+    // Kiểm tra xem lượt gửi trước có thất bại hay không:
+    // - Từ hiện tại trên trang KHÔNG đổi (vẫn là lastWord), HOẶC
+    // - Input vẫn còn giữ nguyên text đã gửi (chưa bị xóa/clear bởi hệ thống), HOẶC
+    // - Có phần tử báo lỗi xuất hiện trên trang
+    function detectSubmitFailed(attemptedWord) {
+      const current = findCurrentWord();
+      if (current && normWord(current) === normWord(lastWord)) return true;
+
+      const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
+      if (input && input.value && normWord(input.value) === normWord(attemptedWord)) return true;
+
+      const errEl = Array.from(document.querySelectorAll('div, span, p')).find(el => {
+        if (el.closest('#noitu-helper')) return false;
+        const t = (el.innerText || el.textContent || '').trim().toLowerCase();
+        return t && /không hợp lệ|không có trong|sai|lỗi|invalid|not found/.test(t) && t.length < 80;
+      });
+      if (errEl) return true;
+
+      return false;
+    }
+
     function tryAutoPlay() {
       if (!autoEnabled || !isReady) return;
       clearTimeout(autoTimer);
       clearTimeout(checkAcceptTimer);
+      clearTimeout(escTimer);
 
       const chips = resultEl.querySelectorAll('.sugg');
-      if (!chips.length) return;
+      if (!chips.length) {
+        // Không có gợi ý nào hiển thị (kể cả rỗng hoàn toàn) → tự bỏ qua
+        scheduleEscape();
+        return;
+      }
 
       // Thứ tự ưu tiên mới:
       // 1. Cụt → 2. Bẫy → 3. Thường → 4. Không nên dùng (chỉ khi hết đường)
@@ -424,9 +494,13 @@
           if (el.dataset.kind === 'risk') { best = el; break; }
         }
       }
-      if (!best) return;
+      if (!best) {
+        // Chỉ còn chip "used" (đã dùng) → không còn từ khả dụng → tự bỏ qua
+        scheduleEscape();
+        return;
+      }
 
-      const delay = 800 + Math.random() * 700;
+      const delay = 60 + Math.random() * 120;
       autoTimer = setTimeout(() => {
         if (!autoEnabled) return;
         const full = best.dataset.full;
@@ -441,8 +515,7 @@
 
         checkAcceptTimer = setTimeout(() => {
           if (!autoEnabled) return;
-          const current = findCurrentWord();
-          if (current && current === lastWord && lastAttemptedWord) {
+          if (lastAttemptedWord && detectSubmitFailed(lastAttemptedWord)) {
             markAsBad(lastAttemptedWord);
             usedWords.delete(lastAttemptedWord);
             suggest(lastWord);
@@ -450,7 +523,7 @@
               if (autoEnabled) tryAutoPlay();
             }, 600);
           }
-        }, 3500);
+        }, 4000);
       }, delay);
     }
 
@@ -458,6 +531,7 @@
       if (!word) {
         currentEl.textContent = 'Chưa tìm thấy từ';
         resultEl.innerHTML = '';
+        if (autoEnabled) scheduleEscape();
         return;
       }
       currentEl.textContent = word;
@@ -473,6 +547,8 @@
 
       if (!available.length && !usedOnes.length) {
         resultEl.innerHTML = `<div style="color:#d97706;font-size:13px;padding:6px;">Chưa có gợi ý cho "${key}"</div>`;
+        // Không có từ nào để nối → tự động bỏ qua (ESC) nếu đang bật Tự chọn
+        if (autoEnabled) scheduleEscape();
         return;
       }
 
@@ -562,13 +638,17 @@
 
           clearTimeout(checkAcceptTimer);
           checkAcceptTimer = setTimeout(() => {
-            const current = findCurrentWord();
-            if (current && current === lastWord && lastAttemptedWord) {
+            if (lastAttemptedWord && detectSubmitFailed(lastAttemptedWord)) {
               markAsBad(lastAttemptedWord);
               usedWords.delete(lastAttemptedWord);
               suggest(lastWord);
+              if (autoEnabled) {
+                setTimeout(() => {
+                  if (autoEnabled) tryAutoPlay();
+                }, 600);
+              }
             }
-          }, 3500);
+          }, 4000);
         };
       });
 
@@ -609,6 +689,7 @@
         lastWord = word;
         lastAttemptedWord = null;
         clearTimeout(checkAcceptTimer);
+        clearTimeout(escTimer);
         suggest(word);
       }
     }
