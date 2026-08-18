@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Nối Từ Helper Mobile (noitu.fun)
 // @namespace    http://tampermonkey.net/
-// @version      1.0-mobile
-// @description  Bản điện thoại: chỉ nút Tự chọn + tự dán/gửi + chặn bàn phím ảo
+// @version      1.1-mobile
+// @description  Bản điện thoại: chỉ nút Tự chọn + tự dán/gửi + chặn bàn phím ảo (đã sửa nhận diện từ)
 // @author       You
 // @match        https://www.noitu.fun/*
 // @match        https://noitu.fun/*
@@ -18,7 +18,6 @@
   const BAD_KEY = 'noitu_helper_bad_words';
   const POS_KEY = 'noitu_helper_pos_mobile';
 
-  // ===== localStorage helpers =====
   function loadJSON(key) {
     try {
       const raw = localStorage.getItem(key);
@@ -54,15 +53,16 @@
     const allSeenWords = new Set();
     const badWords = loadBadWords();
 
-    // ===== UI gọn =====
+    // ===== UI =====
     const panel = document.createElement('div');
     panel.id = HELPER_ID;
     panel.innerHTML = `
       <div id="noitu-m-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:grab;">
-        <div style="font-weight:700;font-size:14px;white-space:nowrap;">🧠 Auto Nối Từ</div>
-        <button id="noitu-m-auto" style="border:none;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;min-width:90px;"></button>
-        <div id="noitu-m-status" style="font-size:11px;color:#10b981;min-width:70px;text-align:right;">...</div>
+        <div style="font-weight:700;font-size:14px;white-space:nowrap;">🧠 Auto</div>
+        <button id="noitu-m-auto" style="border:none;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;min-width:96px;"></button>
+        <div id="noitu-m-status" style="font-size:11px;color:#10b981;min-width:90px;text-align:right;line-height:1.25;">...</div>
       </div>
+      <div id="noitu-m-current" style="margin-top:6px;font-size:12px;color:#065f46;text-align:center;font-weight:600;min-height:18px;"></div>
     `;
 
     Object.assign(panel.style, {
@@ -97,6 +97,7 @@
 
     const autoBtn = document.getElementById('noitu-m-auto');
     const statusEl = document.getElementById('noitu-m-status');
+    const currentEl = document.getElementById('noitu-m-current');
     const headerEl = document.getElementById('noitu-m-header');
 
     function updateAutoBtn() {
@@ -137,11 +138,11 @@
     }
     function getLastSyllable(text) {
       if (!text) return '';
-      return normWord(text.replace(/[.,!?]/g, '')).split(' ').pop() || '';
+      return normWord(String(text).replace(/[.,!?]/g, '')).split(' ').pop() || '';
     }
     function isValidTwoSyllable(text) {
       if (!text) return false;
-      text = text.trim().toLowerCase();
+      text = String(text).trim().toLowerCase();
       return /^[a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+ [a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+$/i.test(text);
     }
 
@@ -202,61 +203,95 @@
       return available.some(w => isDeadEndWord(w));
     }
 
-    // ===== Tìm từ hiện tại trên bàn =====
+    // ===== Nhận diện từ hiện tại (nới lỏng + nhiều cách) =====
     function findCurrentWord() {
       const candidates = [];
-      document.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b').forEach(el => {
+
+      // Cách 1: quét text 2 âm tiết trên màn hình (giống bản gốc, nới mobile)
+      document.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b, label').forEach(el => {
         if (el.closest('#' + HELPER_ID)) return;
         const text = (el.innerText || el.textContent || '').trim();
-        if (!isValidTwoSyllable(text) || el.offsetParent === null) return;
+        if (!isValidTwoSyllable(text)) return;
+        if (el.offsetParent === null && getComputedStyle(el).display === 'none') return;
+
         const style = window.getComputedStyle(el);
         const fontSize = parseFloat(style.fontSize) || 0;
         const rect = el.getBoundingClientRect();
-        if (fontSize < 14 || rect.top < 40 || rect.top > window.innerHeight - 90) return;
-        let score = fontSize * 2;
-        if (style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 600) score += 25;
+        if (rect.width < 10 || rect.height < 8) return;
+
+        // Mobile: nới font + vùng nhìn
+        const minFont = 12;
+        const topBound = 20;
+        const bottomBound = 70;
+        if (fontSize < minFont) return;
+        if (rect.top < topBound || rect.top > window.innerHeight - bottomBound) return;
+
+        let score = fontSize * 2.2;
+        if (style.fontWeight === 'bold' || parseInt(style.fontWeight, 10) >= 600) score += 30;
+        if (style.color && /rgb\(0,\s*0,\s*0\)|#000|black/i.test(style.color)) score += 5;
         const centerY = window.innerHeight / 2;
-        score += Math.max(0, 40 - Math.abs(rect.top + rect.height / 2 - centerY) / 8);
+        score += Math.max(0, 50 - Math.abs(rect.top + rect.height / 2 - centerY) / 6);
+        // Ưu tiên phần tử gần giữa màn hình hơn
+        if (rect.left > 20 && rect.right < window.innerWidth - 20) score += 8;
+
         candidates.push({ text, score, fontSize });
       });
-      if (!candidates.length) return null;
-      candidates.sort((a, b) => b.score - a.score || b.fontSize - a.fontSize);
-      return candidates[0].text;
+
+      if (candidates.length) {
+        candidates.sort((a, b) => b.score - a.score || b.fontSize - a.fontSize);
+        return candidates[0].text;
+      }
+
+      // Cách 2: fallback — tìm text 2 âm tiết bất kỳ không nằm trong helper
+      const allText = [];
+      document.querySelectorAll('div, span, p, strong, b').forEach(el => {
+        if (el.closest('#' + HELPER_ID)) return;
+        const t = (el.innerText || el.textContent || '').trim();
+        if (isValidTwoSyllable(t) && t.length < 40) allText.push(t);
+      });
+      if (allText.length) {
+        // Lấy từ xuất hiện gần đây / duy nhất nhất
+        return allText[allText.length - 1];
+      }
+
+      return null;
     }
 
-    // ===== Chặn bàn phím ảo =====
+    // ===== Input & chặn bàn phím =====
     function getAnswerInput() {
-      return document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
+      return (
+        document.querySelector('input.word-link-answer-input') ||
+        document.querySelector('input[class*="word-link-answer"]') ||
+        document.querySelector('input[class*="answer"]') ||
+        document.querySelector('input[placeholder*="từ"]') ||
+        document.querySelector('input[placeholder*="Từ"]') ||
+        document.querySelector('input[type="text"]') ||
+        document.querySelector('input:not([type])')
+      );
     }
 
     function lockKeyboard() {
       const input = getAnswerInput();
       if (!input) return;
-      input.setAttribute('readonly', 'readonly');
-      input.setAttribute('inputmode', 'none');
-      // Blur ngay nếu đang focus
-      if (document.activeElement === input) {
-        input.blur();
-      }
+      try {
+        input.setAttribute('readonly', 'readonly');
+        input.setAttribute('inputmode', 'none');
+        input.setAttribute('autocomplete', 'off');
+        if (document.activeElement === input) input.blur();
+      } catch (e) {}
     }
 
     function unlockKeyboard() {
       const input = getAnswerInput();
       if (!input) return;
-      input.removeAttribute('readonly');
-      input.removeAttribute('inputmode');
+      try {
+        input.removeAttribute('readonly');
+        input.removeAttribute('inputmode');
+      } catch (e) {}
     }
 
-    // Giữ input luôn readonly khi auto bật
-    function enforceKeyboardLock() {
-      if (!autoEnabled) return;
-      lockKeyboard();
-    }
-
-    // ===== Điền + gửi KHÔNG focus (tránh bàn phím) =====
     function fillWithoutFocus(el, text) {
       try {
-        // Giữ readonly để chặn keyboard
         el.setAttribute('readonly', 'readonly');
         el.setAttribute('inputmode', 'none');
 
@@ -265,32 +300,70 @@
         if (setter) setter.call(el, text);
         else el.value = text;
 
+        // Trigger nhiều event để framework React/Vue nhận
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
         return true;
       } catch (e) {
         return false;
       }
     }
 
+    function clickSubmit() {
+      // Ưu tiên nút submit có class
+      let btn =
+        document.querySelector('button[class*="submitBtn"]') ||
+        document.querySelector('button[class*="submit"]') ||
+        document.querySelector('button[type="submit"]');
+
+      if (!btn) {
+        // Tìm nút có icon / chữ gửi
+        const buttons = Array.from(document.querySelectorAll('button'));
+        btn = buttons.find(b => {
+          const t = (b.textContent || '').trim().toLowerCase();
+          if (/gửi|send|submit|ok|xác nhận/i.test(t)) return true;
+          if (b.querySelector('svg')) return true;
+          return false;
+        });
+      }
+
+      if (btn) {
+        btn.click();
+        return true;
+      }
+
+      // Fallback: Enter trên input
+      const input = getAnswerInput();
+      if (input) {
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+        return true;
+      }
+      return false;
+    }
+
     function autoPasteAndSubmit(text) {
       const input = getAnswerInput();
-      if (!input) return;
+      if (!input) {
+        statusEl.textContent = 'Không thấy ô nhập';
+        statusEl.style.color = '#dc2626';
+        return;
+      }
 
       fillWithoutFocus(input, text);
 
-      // KHÔNG gọi input.focus() → bàn phím không hiện
+      // Không focus → không hiện bàn phím
       setTimeout(() => {
-        const btn = document.querySelector('button[class*="submitBtn"], button[class*="submit"]') ||
-                    Array.from(document.querySelectorAll('button')).find(b => b.querySelector('svg'));
-        if (btn) {
-          btn.click();
-        } else {
-          // Fallback Enter (không cần focus)
-          input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-          input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-        }
-      }, 120);
+        clickSubmit();
+      }, 80);
+
+      // Thử gửi lần 2 nếu lần 1 không kịp
+      setTimeout(() => {
+        const stillSame = input.value && normWord(input.value) === normWord(text);
+        if (stillSame) clickSubmit();
+      }, 350);
     }
 
     function markAsBad(word) {
@@ -307,7 +380,7 @@
           statusEl.textContent = `OK (${byFirst.size})`;
           statusEl.style.color = '#10b981';
         }
-      }, 1800);
+      }, 1600);
     }
 
     function detectSubmitFailed(attemptedWord) {
@@ -318,7 +391,7 @@
       const errEl = Array.from(document.querySelectorAll('div, span, p')).find(el => {
         if (el.closest('#' + HELPER_ID)) return false;
         const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-        return t && /không tồn tại|không hợp lệ|không có trong|sai|lỗi|invalid|not found/.test(t) && t.length < 80;
+        return t && /không tồn tại|không hợp lệ|không có trong|sai|lỗi|invalid|not found/.test(t) && t.length < 90;
       });
       return !!errEl;
     }
@@ -342,14 +415,14 @@
           statusEl.textContent = `OK (${byFirst.size})`;
           statusEl.style.color = '#10b981';
         }
-      }, 1500);
+      }, 1400);
     }
 
     function scheduleEscape() {
       if (actionInFlight) return;
       clearTimeout(escTimer);
       actionInFlight = true;
-      const delay = 450 + Math.random() * 350;
+      const delay = 400 + Math.random() * 300;
       escTimer = setTimeout(() => {
         actionInFlight = false;
         if (!autoEnabled) return;
@@ -362,6 +435,8 @@
       justSubmittedByMe = true;
       usedWords.add(full);
       actionInFlight = true;
+      statusEl.textContent = 'Gửi...';
+      statusEl.style.color = '#059669';
       autoPasteAndSubmit(full);
 
       clearTimeout(checkAcceptTimer);
@@ -375,19 +450,18 @@
               justSubmittedByMe = false;
               actionInFlight = false;
               if (autoEnabled) {
-                setTimeout(() => { if (autoEnabled) tryAutoPlay(); }, 500);
+                setTimeout(() => { if (autoEnabled) tryAutoPlay(); }, 450);
               }
             } else {
               actionInFlight = false;
             }
-          }, 1400);
+          }, 1200);
         } else {
           actionInFlight = false;
         }
-      }, 4800);
+      }, 4500);
     }
 
-    // ===== Chọn từ tốt nhất (ưu tiên cụt → bẫy → thường → risk) =====
     function pickBestWord(word) {
       if (!word || !isReady) return null;
       const key = getLastSyllable(word);
@@ -412,7 +486,6 @@
       risks.sort(byCont);
       oks.sort(byCont);
 
-      // Ưu tiên: cụt → bẫy → thường → risk
       if (deads.length) return deads[0];
       if (traps.length) return traps[0];
       if (oks.length) return oks[0];
@@ -427,13 +500,21 @@
       clearTimeout(checkAcceptTimer);
       clearTimeout(escTimer);
 
+      if (!lastWord) {
+        statusEl.textContent = 'Chưa thấy từ';
+        statusEl.style.color = '#d97706';
+        return;
+      }
+
       const best = pickBestWord(lastWord);
       if (!best) {
+        statusEl.textContent = 'Hết từ → ESC';
+        statusEl.style.color = '#d97706';
         scheduleEscape();
         return;
       }
 
-      const delay = 50 + Math.random() * 100;
+      const delay = 40 + Math.random() * 90;
       actionInFlight = true;
       autoTimer = setTimeout(() => {
         if (!autoEnabled) {
@@ -444,7 +525,7 @@
       }, delay);
     }
 
-    // ===== Toggle Auto =====
+    // ===== Toggle =====
     autoBtn.addEventListener('click', e => {
       e.stopPropagation();
       autoEnabled = !autoEnabled;
@@ -456,6 +537,10 @@
         statusEl.textContent = 'Auto ON';
         statusEl.style.color = '#059669';
         if (lastWord) tryAutoPlay();
+        else {
+          statusEl.textContent = 'Chờ từ...';
+          statusEl.style.color = '#d97706';
+        }
       } else {
         unlockKeyboard();
         clearTimeout(autoTimer);
@@ -467,12 +552,17 @@
       }
     });
 
-    // ===== Theo dõi từ trên bàn =====
+    // ===== Tick =====
     function tick() {
-      // Luôn giữ keyboard locked nếu auto đang bật
-      if (autoEnabled) enforceKeyboardLock();
+      if (autoEnabled) lockKeyboard();
 
       const word = findCurrentWord();
+      if (word) {
+        currentEl.textContent = word;
+      } else {
+        currentEl.textContent = autoEnabled ? 'Đang tìm từ...' : '';
+      }
+
       if (word && word !== lastWord) {
         const norm = normWord(word);
         const isTwo = norm && norm.split(' ').length === 2;
@@ -484,11 +574,16 @@
         clearTimeout(checkAcceptTimer);
         clearTimeout(escTimer);
         clearTimeout(autoTimer);
-        if (autoEnabled) tryAutoPlay();
+
+        if (autoEnabled) {
+          statusEl.textContent = 'Có từ mới';
+          statusEl.style.color = '#059669';
+          tryAutoPlay();
+        }
       }
     }
 
-    // ===== Kéo thả panel =====
+    // ===== Kéo thả =====
     let dragging = false, ox = 0, oy = 0;
     function startDrag(x, y) {
       const rect = panel.getBoundingClientRect();
@@ -513,16 +608,13 @@
       dragging = true;
       startDrag(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: true });
-
     panel.addEventListener('touchmove', e => {
       if (!dragging) return;
       moveDrag(e.touches[0].clientX, e.touches[0].clientY);
       e.preventDefault();
     }, { passive: false });
-
     panel.addEventListener('touchend', () => { dragging = false; });
 
-    // Desktop drag (dự phòng)
     headerEl.addEventListener('mousedown', e => {
       if (e.target.closest('#noitu-m-auto')) return;
       dragging = true;
@@ -531,11 +623,10 @@
     document.addEventListener('mousemove', e => { if (dragging) moveDrag(e.clientX, e.clientY); });
     document.addEventListener('mouseup', () => { dragging = false; });
 
-    // Khởi động
     if (autoEnabled) lockKeyboard();
     tick();
     if (!window.__noituMobileTick) {
-      window.__noituMobileTick = setInterval(tick, 900);
+      window.__noituMobileTick = setInterval(tick, 700);
     }
   }
 
@@ -543,6 +634,6 @@
   if (!window.__noituMobileWatchdog) {
     window.__noituMobileWatchdog = setInterval(() => {
       if (!document.getElementById(HELPER_ID)) createHelper();
-    }, 2000);
+    }, 1800);
   }
 })();
