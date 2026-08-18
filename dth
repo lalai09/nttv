@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Nối Từ Helper Mobile (noitu.fun)
 // @namespace    http://tampermonkey.net/
-// @version      1.1-mobile
-// @description  Bản điện thoại: chỉ nút Tự chọn + tự dán/gửi + chặn bàn phím ảo (đã sửa nhận diện từ)
+// @version      1.2-mobile
+// @description  Bản điện thoại: Tự chọn + tự dán/gửi + chặn bàn phím (sửa nhận diện từ)
 // @author       You
 // @match        https://www.noitu.fun/*
 // @match        https://noitu.fun/*
@@ -17,6 +17,13 @@
   const AUTO_KEY = 'noitu_helper_auto_mobile';
   const BAD_KEY = 'noitu_helper_bad_words';
   const POS_KEY = 'noitu_helper_pos_mobile';
+
+  // Các cụm chữ UI cần bỏ qua (không phải từ trên bàn)
+  const UI_BLACKLIST = new Set([
+    'điều khoản', 'chính sách', 'bỏ qua', 'đối thủ', 'đã nối',
+    'luu thông', 'lưu thông', 'đối hờn', 'chơi ngay', 'xếp hạng',
+    'bảng xếp', 'chia sẻ', 'gửi', 'ok', 'esc', 'bot', 'auto'
+  ]);
 
   function loadJSON(key) {
     try {
@@ -60,9 +67,9 @@
       <div id="noitu-m-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:grab;">
         <div style="font-weight:700;font-size:14px;white-space:nowrap;">🧠 Auto</div>
         <button id="noitu-m-auto" style="border:none;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;min-width:96px;"></button>
-        <div id="noitu-m-status" style="font-size:11px;color:#10b981;min-width:90px;text-align:right;line-height:1.25;">...</div>
+        <div id="noitu-m-status" style="font-size:11px;color:#10b981;min-width:80px;text-align:right;line-height:1.25;">...</div>
       </div>
-      <div id="noitu-m-current" style="margin-top:6px;font-size:12px;color:#065f46;text-align:center;font-weight:600;min-height:18px;"></div>
+      <div id="noitu-m-current" style="margin-top:6px;font-size:13px;color:#065f46;text-align:center;font-weight:700;min-height:20px;"></div>
     `;
 
     Object.assign(panel.style, {
@@ -145,6 +152,14 @@
       text = String(text).trim().toLowerCase();
       return /^[a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+ [a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+$/i.test(text);
     }
+    function isBlacklisted(text) {
+      const n = normWord(text);
+      if (UI_BLACKLIST.has(n)) return true;
+      for (const b of UI_BLACKLIST) {
+        if (n.includes(b)) return true;
+      }
+      return false;
+    }
 
     function buildIndex(entries) {
       byFirst.clear();
@@ -203,58 +218,76 @@
       return available.some(w => isDeadEndWord(w));
     }
 
-    // ===== Nhận diện từ hiện tại (nới lỏng + nhiều cách) =====
+    // ===== NHẬN DIỆN TỪ – ưu tiên chữ TO ở giữa màn hình =====
     function findCurrentWord() {
       const candidates = [];
+      const centerY = window.innerHeight * 0.42; // vùng từ lớn thường nằm hơi trên giữa
+      const centerX = window.innerWidth / 2;
 
-      // Cách 1: quét text 2 âm tiết trên màn hình (giống bản gốc, nới mobile)
-      document.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b, label').forEach(el => {
-        if (el.closest('#' + HELPER_ID)) return;
-        const text = (el.innerText || el.textContent || '').trim();
-        if (!isValidTwoSyllable(text)) return;
-        if (el.offsetParent === null && getComputedStyle(el).display === 'none') return;
+      const nodes = document.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b, label');
+      for (const el of nodes) {
+        if (el.closest('#' + HELPER_ID)) continue;
+
+        // Chỉ lấy text trực tiếp của node (tránh lấy cả cụm con)
+        let text = '';
+        for (const node of el.childNodes) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            text += node.textContent;
+          }
+        }
+        text = text.trim();
+        if (!text) {
+          // fallback: innerText nếu node chỉ có 1 text
+          if (el.children.length === 0) text = (el.innerText || el.textContent || '').trim();
+        }
+        if (!isValidTwoSyllable(text)) continue;
+        if (isBlacklisted(text)) continue;
 
         const style = window.getComputedStyle(el);
-        const fontSize = parseFloat(style.fontSize) || 0;
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+
         const rect = el.getBoundingClientRect();
-        if (rect.width < 10 || rect.height < 8) return;
+        if (rect.width < 30 || rect.height < 16) continue;
+        if (rect.top < 30 || rect.bottom > window.innerHeight - 60) continue;
 
-        // Mobile: nới font + vùng nhìn
-        const minFont = 12;
-        const topBound = 20;
-        const bottomBound = 70;
-        if (fontSize < minFont) return;
-        if (rect.top < topBound || rect.top > window.innerHeight - bottomBound) return;
+        const fontSize = parseFloat(style.fontSize) || 14;
+        // Từ chính trên bàn thường rất to (≥ 22–28px trên mobile)
+        if (fontSize < 18) continue;
 
-        let score = fontSize * 2.2;
-        if (style.fontWeight === 'bold' || parseInt(style.fontWeight, 10) >= 600) score += 30;
-        if (style.color && /rgb\(0,\s*0,\s*0\)|#000|black/i.test(style.color)) score += 5;
-        const centerY = window.innerHeight / 2;
-        score += Math.max(0, 50 - Math.abs(rect.top + rect.height / 2 - centerY) / 6);
-        // Ưu tiên phần tử gần giữa màn hình hơn
-        if (rect.left > 20 && rect.right < window.innerWidth - 20) score += 8;
+        let score = fontSize * 4;
 
-        candidates.push({ text, score, fontSize });
-      });
+        // Càng gần giữa màn hình càng cao điểm
+        const dy = Math.abs((rect.top + rect.height / 2) - centerY);
+        const dx = Math.abs((rect.left + rect.width / 2) - centerX);
+        score += Math.max(0, 80 - dy / 3);
+        score += Math.max(0, 40 - dx / 4);
 
-      if (candidates.length) {
-        candidates.sort((a, b) => b.score - a.score || b.fontSize - a.fontSize);
-        return candidates[0].text;
+        if (style.fontWeight === 'bold' || parseInt(style.fontWeight, 10) >= 600) score += 25;
+        // Ưu tiên màu tối (chữ chính)
+        const color = style.color || '';
+        if (/rgb\(\s*0\s*,\s*0\s*,\s*0|rgb\(\s*17|rgb\(\s*31|#0|#1|#2/i.test(color)) score += 15;
+
+        candidates.push({ text, score, fontSize, top: rect.top });
       }
 
-      // Cách 2: fallback — tìm text 2 âm tiết bất kỳ không nằm trong helper
-      const allText = [];
-      document.querySelectorAll('div, span, p, strong, b').forEach(el => {
-        if (el.closest('#' + HELPER_ID)) return;
-        const t = (el.innerText || el.textContent || '').trim();
-        if (isValidTwoSyllable(t) && t.length < 40) allText.push(t);
-      });
-      if (allText.length) {
-        // Lấy từ xuất hiện gần đây / duy nhất nhất
-        return allText[allText.length - 1];
+      if (!candidates.length) {
+        // Fallback nhẹ: quét lại với font nhỏ hơn một chút, vẫn blacklist
+        for (const el of nodes) {
+          if (el.closest('#' + HELPER_ID)) continue;
+          const text = (el.innerText || el.textContent || '').trim();
+          if (!isValidTwoSyllable(text) || isBlacklisted(text)) continue;
+          if (text.split(' ').length !== 2) continue;
+          const style = window.getComputedStyle(el);
+          const fontSize = parseFloat(style.fontSize) || 0;
+          const rect = el.getBoundingClientRect();
+          if (fontSize < 16 || rect.top < 40 || rect.top > window.innerHeight - 100) continue;
+          candidates.push({ text, score: fontSize * 2, fontSize, top: rect.top });
+        }
       }
 
-      return null;
+      if (!candidates.length) return null;
+      candidates.sort((a, b) => b.score - a.score || b.fontSize - a.fontSize);
+      return candidates[0].text;
     }
 
     // ===== Input & chặn bàn phím =====
@@ -266,7 +299,7 @@
         document.querySelector('input[placeholder*="từ"]') ||
         document.querySelector('input[placeholder*="Từ"]') ||
         document.querySelector('input[type="text"]') ||
-        document.querySelector('input:not([type])')
+        document.querySelector('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])')
       );
     }
 
@@ -300,10 +333,11 @@
         if (setter) setter.call(el, text);
         else el.value = text;
 
-        // Trigger nhiều event để framework React/Vue nhận
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
+        try {
+          el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
+        } catch (e) {}
         return true;
       } catch (e) {
         return false;
@@ -311,19 +345,21 @@
     }
 
     function clickSubmit() {
-      // Ưu tiên nút submit có class
       let btn =
         document.querySelector('button[class*="submitBtn"]') ||
         document.querySelector('button[class*="submit"]') ||
         document.querySelector('button[type="submit"]');
 
       if (!btn) {
-        // Tìm nút có icon / chữ gửi
         const buttons = Array.from(document.querySelectorAll('button'));
         btn = buttons.find(b => {
           const t = (b.textContent || '').trim().toLowerCase();
           if (/gửi|send|submit|ok|xác nhận/i.test(t)) return true;
-          if (b.querySelector('svg')) return true;
+          // Nút tròn có icon paper-plane
+          if (b.querySelector('svg')) {
+            const r = b.getBoundingClientRect();
+            if (r.width >= 36 && r.width <= 56 && r.height >= 36 && r.height <= 56) return true;
+          }
           return false;
         });
       }
@@ -333,11 +369,9 @@
         return true;
       }
 
-      // Fallback: Enter trên input
       const input = getAnswerInput();
       if (input) {
         input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-        input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
         input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
         return true;
       }
@@ -351,19 +385,11 @@
         statusEl.style.color = '#dc2626';
         return;
       }
-
       fillWithoutFocus(input, text);
-
-      // Không focus → không hiện bàn phím
+      setTimeout(() => clickSubmit(), 70);
       setTimeout(() => {
-        clickSubmit();
-      }, 80);
-
-      // Thử gửi lần 2 nếu lần 1 không kịp
-      setTimeout(() => {
-        const stillSame = input.value && normWord(input.value) === normWord(text);
-        if (stillSame) clickSubmit();
-      }, 350);
+        if (input.value && normWord(input.value) === normWord(text)) clickSubmit();
+      }, 320);
     }
 
     function markAsBad(word) {
@@ -380,7 +406,7 @@
           statusEl.textContent = `OK (${byFirst.size})`;
           statusEl.style.color = '#10b981';
         }
-      }, 1600);
+      }, 1500);
     }
 
     function detectSubmitFailed(attemptedWord) {
@@ -415,19 +441,18 @@
           statusEl.textContent = `OK (${byFirst.size})`;
           statusEl.style.color = '#10b981';
         }
-      }, 1400);
+      }, 1300);
     }
 
     function scheduleEscape() {
       if (actionInFlight) return;
       clearTimeout(escTimer);
       actionInFlight = true;
-      const delay = 400 + Math.random() * 300;
       escTimer = setTimeout(() => {
         actionInFlight = false;
         if (!autoEnabled) return;
         sendEscape();
-      }, delay);
+      }, 400 + Math.random() * 280);
     }
 
     function performSubmit(full) {
@@ -449,17 +474,15 @@
               usedWords.delete(lastAttemptedWord);
               justSubmittedByMe = false;
               actionInFlight = false;
-              if (autoEnabled) {
-                setTimeout(() => { if (autoEnabled) tryAutoPlay(); }, 450);
-              }
+              if (autoEnabled) setTimeout(() => { if (autoEnabled) tryAutoPlay(); }, 400);
             } else {
               actionInFlight = false;
             }
-          }, 1200);
+          }, 1100);
         } else {
           actionInFlight = false;
         }
-      }, 4500);
+      }, 4200);
     }
 
     function pickBestWord(word) {
@@ -514,18 +537,13 @@
         return;
       }
 
-      const delay = 40 + Math.random() * 90;
       actionInFlight = true;
       autoTimer = setTimeout(() => {
-        if (!autoEnabled) {
-          actionInFlight = false;
-          return;
-        }
+        if (!autoEnabled) { actionInFlight = false; return; }
         performSubmit(best);
-      }, delay);
+      }, 40 + Math.random() * 80);
     }
 
-    // ===== Toggle =====
     autoBtn.addEventListener('click', e => {
       e.stopPropagation();
       autoEnabled = !autoEnabled;
@@ -552,22 +570,22 @@
       }
     });
 
-    // ===== Tick =====
     function tick() {
       if (autoEnabled) lockKeyboard();
 
       const word = findCurrentWord();
       if (word) {
-        currentEl.textContent = word;
+        currentEl.textContent = '📌 ' + word;
+        currentEl.style.color = '#065f46';
       } else {
         currentEl.textContent = autoEnabled ? 'Đang tìm từ...' : '';
+        currentEl.style.color = '#9ca3af';
       }
 
       if (word && word !== lastWord) {
         const norm = normWord(word);
-        const isTwo = norm && norm.split(' ').length === 2;
         justSubmittedByMe = false;
-        if (isTwo) allSeenWords.add(norm);
+        if (norm.split(' ').length === 2) allSeenWords.add(norm);
         lastWord = word;
         lastAttemptedWord = null;
         actionInFlight = false;
@@ -583,7 +601,7 @@
       }
     }
 
-    // ===== Kéo thả =====
+    // Kéo thả
     let dragging = false, ox = 0, oy = 0;
     function startDrag(x, y) {
       const rect = panel.getBoundingClientRect();
@@ -626,7 +644,7 @@
     if (autoEnabled) lockKeyboard();
     tick();
     if (!window.__noituMobileTick) {
-      window.__noituMobileTick = setInterval(tick, 700);
+      window.__noituMobileTick = setInterval(tick, 650);
     }
   }
 
