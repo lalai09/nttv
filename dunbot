@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Nối Từ Helper (noitu.fun)
 // @namespace    http://tampermonkey.net/
-// @version      1.20
-// @description  Gợi ý nối từ + tự dán + tự gửi ngay lập tức khi có từ mới + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + hiện từ đã dùng + tự bỏ từ không dùng được sau 4s + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua (ESC) khi không tìm thấy từ để nối + ghi lại từ đối thủ dùng mà mình chưa có trong kho + tách 2 bảng riêng (Gợi ý / Từ lỗi & Từ mới)
+// @version      1.21
+// @description  Gợi ý nối từ + tự dán + tự gửi ngay lập tức khi có từ mới + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + hiện từ đã dùng + tự bỏ từ không dùng được sau 4s + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua (ESC) khi không tìm thấy từ để nối + ghi lại từ đối thủ dùng mà mình chưa có trong kho + tách 2 bảng riêng (Gợi ý / Từ lỗi & Từ mới) + khóa chống gửi/ESC trùng lặp
 // @author       You
 // @match        https://www.noitu.fun/*
 // @match        https://noitu.fun/*
@@ -246,13 +246,25 @@
       autoEnabled = !autoEnabled;
       saveAuto(autoEnabled);
       updateAutoBtn();
-      if (autoEnabled && lastWord) tryAutoPlay();
+      if (autoEnabled && lastWord) {
+        tryAutoPlay();
+      } else if (!autoEnabled) {
+        // Tắt auto: hủy mọi hành động đang chờ và mở khóa để lần bật lại sau sạch sẽ
+        clearTimeout(autoTimer);
+        clearTimeout(checkAcceptTimer);
+        clearTimeout(escTimer);
+        actionInFlight = false;
+      }
     });
 
     clearBtn.addEventListener('click', e => {
       e.stopPropagation();
       usedWords.clear();
       allSeenWords.clear();
+      clearTimeout(autoTimer);
+      clearTimeout(checkAcceptTimer);
+      clearTimeout(escTimer);
+      actionInFlight = false;
       statusEl.textContent = 'Đã xóa lịch sử phiên';
       statusEl.style.color = '#d97706';
       setTimeout(() => {
@@ -269,6 +281,10 @@
       badWords.clear();
       saveBadWords(badWords);
       renderBadList();
+      clearTimeout(autoTimer);
+      clearTimeout(checkAcceptTimer);
+      clearTimeout(escTimer);
+      actionInFlight = false;
       if (lastWord) suggest(lastWord);
       statusEl.textContent = 'Đã xóa danh sách từ lỗi';
       statusEl.style.color = '#d97706';
@@ -382,6 +398,7 @@
     let lastAttemptedWord = null;
     let justSubmittedByMe = false; // cờ đánh dấu lượt kế tiếp là do chính mình vừa gửi
     let escTimer = null;
+    let actionInFlight = false; // khóa: đang có 1 hành động (gửi từ / bỏ qua) chờ xử lý, chặn hành động chồng lấn
 
     statusEl.textContent = 'Đang tải kho từ...';
     statusEl.style.color = '#d97706';
@@ -476,7 +493,12 @@
         const style = window.getComputedStyle(el);
         const fontSize = parseFloat(style.fontSize) || 0;
         const rect = el.getBoundingClientRect();
-        if (fontSize < 20 || rect.top < 60 || rect.top > window.innerHeight - 140) return;
+        // Trên điện thoại font chữ của trang thường nhỏ hơn và layout khác desktop,
+        // nên nới lỏng ngưỡng font-size và vùng top/bottom để không bị lọc mất từ.
+        const minFontSize = isMobile ? 14 : 20;
+        const topBound = isMobile ? 40 : 60;
+        const bottomBound = isMobile ? 90 : 140;
+        if (fontSize < minFontSize || rect.top < topBound || rect.top > window.innerHeight - bottomBound) return;
         let score = fontSize * 2;
         if (style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 600) score += 25;
         const centerY = window.innerHeight / 2;
@@ -595,9 +617,12 @@
     }
 
     function scheduleEscape() {
+      if (actionInFlight) return; // đã có hành động khác đang chờ xử lý, không xếp thêm ESC
       clearTimeout(escTimer);
+      actionInFlight = true;
       const delay = 500 + Math.random() * 400;
       escTimer = setTimeout(() => {
+        actionInFlight = false;
         if (!autoEnabled) return;
         sendEscape();
       }, delay);
@@ -613,15 +638,61 @@
       const errEl = Array.from(document.querySelectorAll('div, span, p')).find(el => {
         if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2')) return false;
         const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-        return t && /không hợp lệ|không có trong|sai|lỗi|invalid|not found/.test(t) && t.length < 80;
+        return t && /không tồn tại|không hợp lệ|không có trong|sai|lỗi|invalid|not found/.test(t) && t.length < 80;
       });
       if (errEl) return true;
 
       return false;
     }
 
+    // Hàm gửi từ dùng chung cho cả auto-play lẫn click tay,
+    // đồng thời giữ khóa actionInFlight trong suốt quá trình chờ xác nhận.
+    function performSubmit(full, el) {
+      lastAttemptedWord = full;
+      justSubmittedByMe = true;
+      usedWords.add(full);
+      actionInFlight = true;
+      autoPasteAndSubmit(full);
+
+      if (el) {
+        const oldBg = el.style.background;
+        const textEl = el.querySelector('.sugg-text');
+        el.style.background = '#059669';
+        if (textEl) textEl.style.color = 'white';
+        setTimeout(() => { el.style.background = oldBg; }, 400);
+      }
+
+      clearTimeout(checkAcceptTimer);
+      checkAcceptTimer = setTimeout(() => {
+        if (lastAttemptedWord && detectSubmitFailed(lastAttemptedWord)) {
+          // Kiểm tra lại lần 2 sau 1.5s trước khi kết luận thất bại,
+          // để tránh báo sai khi trang chỉ load/cập nhật chậm chứ từ vẫn hợp lệ.
+          setTimeout(() => {
+            if (!lastAttemptedWord) return; // đã có lượt mới xác nhận thành công trong lúc chờ
+            if (detectSubmitFailed(lastAttemptedWord)) {
+              markAsBad(lastAttemptedWord);
+              usedWords.delete(lastAttemptedWord);
+              justSubmittedByMe = false;
+              actionInFlight = false;
+              suggest(lastWord);
+              if (autoEnabled) {
+                setTimeout(() => {
+                  if (autoEnabled) tryAutoPlay();
+                }, 600);
+              }
+            } else {
+              actionInFlight = false; // lần kiểm tra lại xác nhận đã thành công, chỉ là trang load chậm
+            }
+          }, 1500);
+        } else {
+          actionInFlight = false; // gửi coi như thành công (hoặc không xác định được lỗi) -> mở khóa
+        }
+      }, 5000);
+    }
+
     function tryAutoPlay() {
       if (!autoEnabled || !isReady) return;
+      if (actionInFlight) return; // đang có hành động khác chờ xử lý, không chồng thêm
       clearTimeout(autoTimer);
       clearTimeout(checkAcceptTimer);
       clearTimeout(escTimer);
@@ -658,31 +729,11 @@
       }
 
       const delay = 60 + Math.random() * 120;
+      actionInFlight = true; // khóa ngay khi đã lên lịch, tránh bị gọi lại trong lúc chờ
       autoTimer = setTimeout(() => {
-        if (!autoEnabled) return;
+        if (!autoEnabled) { actionInFlight = false; return; }
         const full = best.dataset.full;
-        lastAttemptedWord = full;
-        justSubmittedByMe = true;
-        usedWords.add(full);
-        autoPasteAndSubmit(full);
-
-        const oldBg = best.style.background;
-        best.style.background = '#059669';
-        best.querySelector('.sugg-text').style.color = 'white';
-        setTimeout(() => { best.style.background = oldBg; }, 400);
-
-        checkAcceptTimer = setTimeout(() => {
-          if (!autoEnabled) return;
-          if (lastAttemptedWord && detectSubmitFailed(lastAttemptedWord)) {
-            markAsBad(lastAttemptedWord);
-            usedWords.delete(lastAttemptedWord);
-            justSubmittedByMe = false;
-            suggest(lastWord);
-            setTimeout(() => {
-              if (autoEnabled) tryAutoPlay();
-            }, 600);
-          }
-        }, 4000);
+        performSubmit(full, best);
       }, delay);
     }
 
@@ -700,9 +751,11 @@
       }
 
       const key = getLastSyllable(word);
+      const curNorm = normWord(word);
       const allForKey = byFirst.get(key) || [];
-      const available = allForKey.filter(w => !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w));
-      const usedOnes  = allForKey.filter(w => usedWords.has(w) || allSeenWords.has(w));
+      // Không bao giờ gợi ý lại chính từ đang cần nối (chặn trường hợp "cào cào" tự nối chính nó)
+      const available = allForKey.filter(w => w !== curNorm && !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w));
+      const usedOnes  = allForKey.filter(w => w !== curNorm && (usedWords.has(w) || allSeenWords.has(w)));
 
       if (!available.length && !usedOnes.length) {
         resultEl.innerHTML = `<div style="color:#d97706;font-size:13px;padding:6px;">Chưa có gợi ý cho "${key}"</div>`;
@@ -784,31 +837,10 @@
         };
 
         el.onclick = () => {
+          if (actionInFlight) return; // đang xử lý hành động trước đó, chặn double click
           const full = el.dataset.full;
-          lastAttemptedWord = full;
-          justSubmittedByMe = true;
-          usedWords.add(full);
-          autoPasteAndSubmit(full);
-          const oldBg = el.style.background;
-          el.style.background = '#059669';
-          el.querySelector('.sugg-text').style.color = 'white';
-          setTimeout(() => { el.style.background = oldBg; }, 400);
+          performSubmit(full, el);
           tooltip.style.display = 'none';
-
-          clearTimeout(checkAcceptTimer);
-          checkAcceptTimer = setTimeout(() => {
-            if (lastAttemptedWord && detectSubmitFailed(lastAttemptedWord)) {
-              markAsBad(lastAttemptedWord);
-              usedWords.delete(lastAttemptedWord);
-              justSubmittedByMe = false;
-              suggest(lastWord);
-              if (autoEnabled) {
-                setTimeout(() => {
-                  if (autoEnabled) tryAutoPlay();
-                }, 600);
-              }
-            }
-          }, 4000);
         };
       });
 
@@ -854,11 +886,16 @@
         }
         justSubmittedByMe = false;
 
+        // Ghi nhận NGAY từ này là "đã xuất hiện" trước khi gợi ý, để nó không thể
+        // tự được gợi ý làm phần nối tiếp cho chính nó (vd: "cào cào" đối thủ vừa dùng).
+        if (isTwoSyllable) allSeenWords.add(norm);
+
         lastWord = word;
         lastAttemptedWord = null;
-        if (isTwoSyllable) allSeenWords.add(norm);
+        actionInFlight = false; // từ trên bàn đã đổi -> hành động trước đó đã xong, mở khóa cho lượt mới
         clearTimeout(checkAcceptTimer);
         clearTimeout(escTimer);
+        clearTimeout(autoTimer);
         suggest(word);
       }
     }
