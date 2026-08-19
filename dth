@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Nối Từ Helper Mobile (noitu.fun)
+// @name         Nối Từ Helper (noitu.fun)
 // @namespace    http://tampermonkey.net/
-// @version      1.2-mobile
-// @description  Bản điện thoại: Tự chọn + tự dán/gửi + chặn bàn phím (sửa nhận diện từ)
+// @version      1.25
+// @description  Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + ẩn từ đã dùng + tự bỏ từ lỗi + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua đúng 1 lần + ghi từ mới từ đối thủ + 2 bảng riêng + khóa chống trùng + hiện số từ chính xác + fix bàn phím Quetta/Android
 // @author       You
 // @match        https://www.noitu.fun/*
 // @match        https://noitu.fun/*
@@ -13,17 +13,14 @@
 (function () {
   'use strict';
 
-  const HELPER_ID = 'noitu-helper-mobile';
-  const AUTO_KEY = 'noitu_helper_auto_mobile';
+  const HELPER_ID = 'noitu-helper';
+  const HELPER2_ID = 'noitu-helper-2';
+  const POS_KEY = 'noitu_helper_pos';
+  const POS_KEY2 = 'noitu_helper_pos2';
+  const AUTO_KEY = 'noitu_helper_auto';
   const BAD_KEY = 'noitu_helper_bad_words';
-  const POS_KEY = 'noitu_helper_pos_mobile';
-
-  // Các cụm chữ UI cần bỏ qua (không phải từ trên bàn)
-  const UI_BLACKLIST = new Set([
-    'điều khoản', 'chính sách', 'bỏ qua', 'đối thủ', 'đã nối',
-    'luu thông', 'lưu thông', 'đối hờn', 'chơi ngay', 'xếp hạng',
-    'bảng xếp', 'chia sẻ', 'gửi', 'ok', 'esc', 'bot', 'auto'
-  ]);
+  const NEW_KEY = 'noitu_helper_new_words';
+  const COLLAPSE2_KEY = 'noitu_helper_collapse2';
 
   function loadJSON(key) {
     try {
@@ -34,6 +31,10 @@
   function saveJSON(key, val) {
     try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
   }
+  function loadPosition() { return loadJSON(POS_KEY); }
+  function savePosition(left, top) { saveJSON(POS_KEY, { left, top }); }
+  function loadPosition2() { return loadJSON(POS_KEY2); }
+  function savePosition2(left, top) { saveJSON(POS_KEY2, { left, top }); }
   function loadAuto() {
     try { return localStorage.getItem(AUTO_KEY) === '1'; } catch (e) { return false; }
   }
@@ -46,72 +47,182 @@
       return raw ? new Set(JSON.parse(raw)) : new Set();
     } catch (e) { return new Set(); }
   }
-  function saveBadWords(set) {
-    saveJSON(BAD_KEY, [...set]);
+  function saveBadWords(set) { saveJSON(BAD_KEY, [...set]); }
+  function loadNewWords() {
+    try {
+      const raw = localStorage.getItem(NEW_KEY);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch (e) { return new Set(); }
   }
-  function loadPosition() { return loadJSON(POS_KEY); }
-  function savePosition(left, top) { saveJSON(POS_KEY, { left, top }); }
+  function saveNewWords(set) { saveJSON(NEW_KEY, [...set]); }
+  function loadCollapse2() {
+    try { return localStorage.getItem(COLLAPSE2_KEY) === '1'; } catch (e) { return false; }
+  }
+  function saveCollapse2(on) {
+    try { localStorage.setItem(COLLAPSE2_KEY, on ? '1' : '0'); } catch (e) {}
+  }
 
   function createHelper() {
-    if (document.getElementById(HELPER_ID)) return;
+    if (document.getElementById(HELPER_ID) && document.getElementById(HELPER2_ID)) return;
 
+    const existing1 = document.getElementById(HELPER_ID);
+    const existing2 = document.getElementById(HELPER2_ID);
+    if (existing1) existing1.remove();
+    if (existing2) existing2.remove();
+
+    const isMobile = window.matchMedia('(max-width: 640px)').matches || ('ontouchstart' in window && window.innerWidth < 900);
+    const savedPos = loadPosition();
+    const savedPos2 = loadPosition2();
     let autoEnabled = loadAuto();
     const usedWords = new Set();
     const allSeenWords = new Set();
     const badWords = loadBadWords();
+    const newWords = loadNewWords();
 
-    // ===== UI =====
+    // ============ BẢNG 1: GỢI Ý ============
     const panel = document.createElement('div');
     panel.id = HELPER_ID;
     panel.innerHTML = `
-      <div id="noitu-m-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:grab;">
-        <div style="font-weight:700;font-size:14px;white-space:nowrap;">🧠 Auto</div>
-        <button id="noitu-m-auto" style="border:none;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;min-width:96px;"></button>
-        <div id="noitu-m-status" style="font-size:11px;color:#10b981;min-width:80px;text-align:right;line-height:1.25;">...</div>
+      <div id="noitu-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:grab;">
+        <div style="font-weight:700;font-size:15px;">🧠 Gợi ý Nối Từ <span id="noitu-word-count" style="font-weight:500;font-size:12px;color:#059669;margin-left:6px;"></span></div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <button id="noitu-auto" style="border:none;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;">Tự chọn</button>
+          <button id="noitu-clear" title="Xóa lịch sử từ đã dùng trong phiên" style="border:none;background:#fef2f2;color:#b91c1c;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:600;cursor:pointer;">Xóa</button>
+          <div id="noitu-status" style="font-size:11px;color:#10b981;">Sẵn sàng</div>
+          <button id="noitu-toggle" style="border:none;background:#ecfdf5;color:#065f46;border-radius:8px;width:28px;height:28px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</button>
+        </div>
       </div>
-      <div id="noitu-m-current" style="margin-top:6px;font-size:13px;color:#065f46;text-align:center;font-weight:700;min-height:20px;"></div>
+      <div id="noitu-body">
+        <div id="noitu-current" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:16px;font-weight:600;text-align:center;border:1px solid #6ee7b7;color:#065f46;">Đang tìm từ...</div>
+        <div id="noitu-result" style="display:flex;flex-wrap:wrap;gap:8px;max-height:${isMobile ? '32vh' : '360px'};overflow-y:auto;padding:2px;-webkit-overflow-scrolling:touch;"></div>
+        <div style="margin-top:10px;font-size:11px;color:#6b7280;text-align:center;">Chạm chữ → tự dán + gửi · Hover xem chữ nối tiếp</div>
+      </div>
     `;
 
     Object.assign(panel.style, {
       position: 'fixed',
       background: '#ffffff',
       border: '2px solid #10b981',
-      borderRadius: '14px',
-      padding: '10px 12px',
+      borderRadius: '16px',
+      padding: isMobile ? '12px 14px' : '16px',
       zIndex: '999999',
-      boxShadow: '0 8px 28px rgba(16,185,129,0.28)',
+      boxShadow: '0 12px 40px rgba(16,185,129,0.25)',
       fontFamily: 'system-ui, -apple-system, sans-serif',
       userSelect: 'none',
       touchAction: 'none',
       boxSizing: 'border-box',
-      left: '8px',
-      right: '8px',
-      bottom: '12px',
-      top: 'auto',
-      maxWidth: '420px',
-      margin: '0 auto'
+      width: isMobile ? 'auto' : '340px',
+      maxWidth: isMobile ? 'none' : '340px'
     });
 
-    const savedPos = loadPosition();
     if (savedPos && savedPos.left && savedPos.top) {
       panel.style.left = savedPos.left;
       panel.style.top = savedPos.top;
       panel.style.right = 'auto';
       panel.style.bottom = 'auto';
+    } else if (isMobile) {
+      panel.style.bottom = '12px';
+      panel.style.left = '8px';
+      panel.style.right = '8px';
+      panel.style.top = 'auto';
+    } else {
+      panel.style.top = '90px';
+      panel.style.right = '20px';
+      panel.style.left = 'auto';
+      panel.style.bottom = 'auto';
     }
-
     document.body.appendChild(panel);
 
-    const autoBtn = document.getElementById('noitu-m-auto');
-    const statusEl = document.getElementById('noitu-m-status');
-    const currentEl = document.getElementById('noitu-m-current');
-    const headerEl = document.getElementById('noitu-m-header');
+    // ============ BẢNG 2 ============
+    const panel2 = document.createElement('div');
+    panel2.id = HELPER2_ID;
+    let collapsed2 = loadCollapse2();
+    panel2.innerHTML = `
+      <div id="noitu-header2" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${collapsed2 ? '0' : '10px'};cursor:grab;">
+        <div style="font-weight:700;font-size:14px;">🗂️ Từ lỗi &amp; Từ mới</div>
+        <button id="noitu-toggle2" style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:8px;width:26px;height:26px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">${collapsed2 ? '+' : '−'}</button>
+      </div>
+      <div id="noitu-body2" style="display:${collapsed2 ? 'none' : 'block'};">
+        <div id="noitu-bad-box">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-size:12px;font-weight:700;color:#6b7280;">🚫 Từ không dùng được <span id="noitu-bad-count">(0)</span></div>
+            <button id="noitu-clear-bad" style="border:none;background:#fef2f2;color:#b91c1c;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Xóa hết</button>
+          </div>
+          <div id="noitu-bad-list" style="display:flex;flex-wrap:wrap;gap:5px;max-height:120px;overflow-y:auto;font-size:12px;"></div>
+        </div>
+        <div id="noitu-new-box" style="margin-top:14px;border-top:1px dashed #d1d5db;padding-top:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-size:12px;font-weight:700;color:#6b7280;">🆕 Từ mới từ đối thủ <span id="noitu-new-count">(0)</span></div>
+            <div style="display:flex;gap:4px;">
+              <button id="noitu-copy-new" style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
+              <button id="noitu-clear-new" style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Xóa hết</button>
+            </div>
+          </div>
+          <div id="noitu-new-list" style="display:flex;flex-wrap:wrap;gap:5px;max-height:120px;overflow-y:auto;font-size:12px;"></div>
+        </div>
+      </div>
+    `;
+
+    Object.assign(panel2.style, {
+      position: 'fixed',
+      background: '#ffffff',
+      border: '2px solid #3b82f6',
+      borderRadius: '16px',
+      padding: isMobile ? '12px 14px' : '16px',
+      zIndex: '999998',
+      boxShadow: '0 12px 40px rgba(59,130,246,0.22)',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      userSelect: 'none',
+      touchAction: 'none',
+      boxSizing: 'border-box',
+      width: isMobile ? 'auto' : '300px',
+      maxWidth: isMobile ? 'none' : '300px'
+    });
+
+    if (savedPos2 && savedPos2.left && savedPos2.top) {
+      panel2.style.left = savedPos2.left;
+      panel2.style.top = savedPos2.top;
+      panel2.style.right = 'auto';
+      panel2.style.bottom = 'auto';
+    } else if (isMobile) {
+      panel2.style.bottom = '12px';
+      panel2.style.right = '8px';
+      panel2.style.left = 'auto';
+      panel2.style.top = 'auto';
+    } else {
+      panel2.style.top = '90px';
+      panel2.style.right = '380px';
+      panel2.style.left = 'auto';
+      panel2.style.bottom = 'auto';
+    }
+    document.body.appendChild(panel2);
+
+    // ---- refs ----
+    const currentEl = document.getElementById('noitu-current');
+    const resultEl = document.getElementById('noitu-result');
+    const statusEl = document.getElementById('noitu-status');
+    const wordCountEl = document.getElementById('noitu-word-count');
+    const bodyEl = document.getElementById('noitu-body');
+    const toggleBtn = document.getElementById('noitu-toggle');
+    const headerEl = document.getElementById('noitu-header');
+    const autoBtn = document.getElementById('noitu-auto');
+    const clearBtn = document.getElementById('noitu-clear');
+    const header2El = document.getElementById('noitu-header2');
+    const body2El = document.getElementById('noitu-body2');
+    const toggle2Btn = document.getElementById('noitu-toggle2');
+    const badListEl = document.getElementById('noitu-bad-list');
+    const badCountEl = document.getElementById('noitu-bad-count');
+    const clearBadBtn = document.getElementById('noitu-clear-bad');
+    const newListEl = document.getElementById('noitu-new-list');
+    const newCountEl = document.getElementById('noitu-new-count');
+    const clearNewBtn = document.getElementById('noitu-clear-new');
+    const copyNewBtn = document.getElementById('noitu-copy-new');
 
     function updateAutoBtn() {
       if (autoEnabled) {
         autoBtn.style.background = '#059669';
-        autoBtn.style.color = '#fff';
-        autoBtn.textContent = 'Tự chọn: BẬT';
+        autoBtn.style.color = 'white';
+        autoBtn.textContent = 'Tự chọn: Bật';
       } else {
         autoBtn.style.background = '#f3f4f6';
         autoBtn.style.color = '#374151';
@@ -120,22 +231,173 @@
     }
     updateAutoBtn();
 
+    autoBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      autoEnabled = !autoEnabled;
+      saveAuto(autoEnabled);
+      updateAutoBtn();
+      if (autoEnabled && lastWord) {
+        tryAutoPlay();
+      } else if (!autoEnabled) {
+        clearTimeout(autoTimer);
+        clearTimeout(checkAcceptTimer);
+        clearTimeout(escTimer);
+        actionInFlight = false;
+      }
+    });
+
+    clearBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      usedWords.clear();
+      allSeenWords.clear();
+      clearTimeout(autoTimer);
+      clearTimeout(checkAcceptTimer);
+      clearTimeout(escTimer);
+      actionInFlight = false;
+      lastEscWord = null;
+      lastEscTime = 0;
+      statusEl.textContent = 'Đã xóa lịch sử phiên';
+      statusEl.style.color = '#d97706';
+      setTimeout(() => {
+        if (isReady) {
+          statusEl.textContent = `Sẵn sàng`;
+          statusEl.style.color = '#10b981';
+        }
+      }, 1500);
+      if (lastWord) suggest(lastWord);
+    });
+
+    clearBadBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      badWords.clear();
+      saveBadWords(badWords);
+      renderBadList();
+      clearTimeout(autoTimer);
+      clearTimeout(checkAcceptTimer);
+      clearTimeout(escTimer);
+      actionInFlight = false;
+      lastEscWord = null;
+      lastEscTime = 0;
+      if (lastWord) suggest(lastWord);
+      statusEl.textContent = 'Đã xóa danh sách từ lỗi';
+      statusEl.style.color = '#d97706';
+      setTimeout(() => {
+        if (isReady) {
+          statusEl.textContent = `Sẵn sàng`;
+          statusEl.style.color = '#10b981';
+        }
+      }, 1500);
+    });
+
+    clearNewBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      newWords.clear();
+      saveNewWords(newWords);
+      renderNewList();
+    });
+
+    copyNewBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const text = [...newWords].join('\n');
+      if (!text) return;
+      const done = () => {
+        const old = copyNewBtn.textContent;
+        copyNewBtn.textContent = 'Đã copy!';
+        setTimeout(() => { copyNewBtn.textContent = old; }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    });
+
+    function fallbackCopy(text, cb) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        cb();
+      } catch (e) {}
+    }
+
+    function renderBadList() {
+      badCountEl.textContent = `(${badWords.size})`;
+      if (badWords.size === 0) {
+        badListEl.innerHTML = '<span style="color:#9ca3af;font-size:11px;">Chưa có từ nào</span>';
+        return;
+      }
+      badListEl.innerHTML = [...badWords].map(w => {
+        return `<span title="${w}" style="background:#f3f4f6;border:1px solid #d1d5db;color:#6b7280;padding:2px 8px;border-radius:999px;font-size:11px;">${w}</span>`;
+      }).join('');
+    }
+    renderBadList();
+
+    function renderNewList() {
+      newCountEl.textContent = `(${newWords.size})`;
+      if (newWords.size === 0) {
+        newListEl.innerHTML = '<span style="color:#9ca3af;font-size:11px;">Chưa có từ nào</span>';
+        return;
+      }
+      newListEl.innerHTML = [...newWords].map(w => {
+        return `<span title="${w}" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;padding:2px 8px;border-radius:999px;font-size:11px;">${w}</span>`;
+      }).join('');
+    }
+    renderNewList();
+
+    let collapsed = isMobile;
+    function applyCollapsed() {
+      bodyEl.style.display = collapsed ? 'none' : 'block';
+      toggleBtn.textContent = collapsed ? '+' : '−';
+    }
+    applyCollapsed();
+    toggleBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      collapsed = !collapsed;
+      applyCollapsed();
+    });
+
+    function applyCollapsed2() {
+      body2El.style.display = collapsed2 ? 'none' : 'block';
+      header2El.style.marginBottom = collapsed2 ? '0' : '10px';
+      toggle2Btn.textContent = collapsed2 ? '+' : '−';
+      saveCollapse2(collapsed2);
+    }
+    applyCollapsed2();
+    toggle2Btn.addEventListener('click', e => {
+      e.stopPropagation();
+      collapsed2 = !collapsed2;
+      applyCollapsed2();
+    });
+
     // ===== Kho từ =====
     const FIREBASE_DB_URL = "https://khotu-fc3e7-default-rtdb.asia-southeast1.firebasedatabase.app";
     const byFirst = new Map();
     const contCount = new Map();
+    const trapFirst = new Map();
     const trapSet = new Set();
+    let totalValidWords = 0;
     let lastWord = '';
     let isReady = false;
     let autoTimer = null;
     let checkAcceptTimer = null;
-    let escTimer = null;
-    let actionInFlight = false;
     let lastAttemptedWord = null;
     let justSubmittedByMe = false;
+    let escTimer = null;
+    let actionInFlight = false;
+    let lastEscWord = null;
+    let lastEscTime = 0;
+    const ESC_COOLDOWN = 5500;
 
-    statusEl.textContent = 'Tải từ...';
+    statusEl.textContent = 'Đang tải kho từ...';
     statusEl.style.color = '#d97706';
+    wordCountEl.textContent = '';
 
     function normWord(w) {
       return (w || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -143,42 +405,38 @@
     function lastSyllable(w) {
       return normWord(w).split(' ').pop();
     }
-    function getLastSyllable(text) {
-      if (!text) return '';
-      return normWord(String(text).replace(/[.,!?]/g, '')).split(' ').pop() || '';
-    }
-    function isValidTwoSyllable(text) {
-      if (!text) return false;
-      text = String(text).trim().toLowerCase();
-      return /^[a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+ [a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+$/i.test(text);
-    }
-    function isBlacklisted(text) {
-      const n = normWord(text);
-      if (UI_BLACKLIST.has(n)) return true;
-      for (const b of UI_BLACKLIST) {
-        if (n.includes(b)) return true;
-      }
-      return false;
-    }
 
     function buildIndex(entries) {
       byFirst.clear();
       contCount.clear();
+      trapFirst.clear();
       trapSet.clear();
+      const validSet = new Set();
       for (const entry of entries) {
         const word = (typeof entry === 'string') ? entry : entry.w;
         const trap = (typeof entry === 'object' && entry) ? !!entry.trap : false;
         if (!word) continue;
         const norm = normWord(word);
-        if (trap) trapSet.add(norm);
         const parts = norm.split(' ');
         if (parts.length !== 2) continue;
+        validSet.add(norm);
+        if (trap) trapSet.add(norm);
         const first = parts[0];
         if (!byFirst.has(first)) byFirst.set(first, []);
         byFirst.get(first).push(norm);
       }
+      totalValidWords = validSet.size;
       for (const [k, arr] of byFirst) {
         contCount.set(k, arr.length);
+        trapFirst.set(k, arr.some(w => trapSet.has(w)));
+      }
+    }
+
+    function updateWordCountDisplay() {
+      if (isReady) {
+        wordCountEl.textContent = `(${totalValidWords.toLocaleString('vi-VN')} từ)`;
+        statusEl.textContent = `Sẵn sàng · ${byFirst.size} âm`;
+        statusEl.style.color = '#10b981';
       }
     }
 
@@ -189,18 +447,18 @@
           const entries = data ? Object.values(data) : [];
           buildIndex(entries);
           isReady = true;
-          statusEl.textContent = `OK (${byFirst.size})`;
-          statusEl.style.color = '#10b981';
-          if (autoEnabled && lastWord) tryAutoPlay();
+          updateWordCountDisplay();
+          if (lastWord) suggest(lastWord);
         })
         .catch(() => {
           isReady = false;
-          statusEl.textContent = 'Lỗi kho';
+          statusEl.textContent = 'Lỗi tải kho từ';
           statusEl.style.color = '#dc2626';
+          wordCountEl.textContent = '';
         });
     }
     loadWords();
-    setInterval(loadWords, 20000);
+    setInterval(loadWords, 15000);
 
     function contCountOf(word) {
       return contCount.get(lastSyllable(word)) || 0;
@@ -215,181 +473,85 @@
       const opts = byFirst.get(ns) || [];
       const available = opts.filter(w => !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w));
       if (!available.length) return false;
+      if (trapFirst.get(ns)) return true;
       return available.some(w => isDeadEndWord(w));
     }
+    function getLastSyllable(text) {
+      if (!text) return '';
+      return normWord(text.replace(/[.,!?]/g, '')).split(' ').pop() || '';
+    }
+    function isValidTwoSyllable(text) {
+      if (!text) return false;
+      text = text.trim().toLowerCase();
+      return /^[a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+ [a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+$/i.test(text);
+    }
 
-    // ===== NHẬN DIỆN TỪ – ưu tiên chữ TO ở giữa màn hình =====
     function findCurrentWord() {
       const candidates = [];
-      const centerY = window.innerHeight * 0.42; // vùng từ lớn thường nằm hơi trên giữa
-      const centerX = window.innerWidth / 2;
-
-      const nodes = document.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b, label');
-      for (const el of nodes) {
-        if (el.closest('#' + HELPER_ID)) continue;
-
-        // Chỉ lấy text trực tiếp của node (tránh lấy cả cụm con)
-        let text = '';
-        for (const node of el.childNodes) {
-          if (node.nodeType === Node.TEXT_NODE) {
-            text += node.textContent;
-          }
-        }
-        text = text.trim();
-        if (!text) {
-          // fallback: innerText nếu node chỉ có 1 text
-          if (el.children.length === 0) text = (el.innerText || el.textContent || '').trim();
-        }
-        if (!isValidTwoSyllable(text)) continue;
-        if (isBlacklisted(text)) continue;
-
+      document.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b').forEach(el => {
+        if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2')) return;
+        const text = (el.innerText || el.textContent || '').trim();
+        if (!isValidTwoSyllable(text) || el.offsetParent === null) return;
         const style = window.getComputedStyle(el);
-        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
-
+        const fontSize = parseFloat(style.fontSize) || 0;
         const rect = el.getBoundingClientRect();
-        if (rect.width < 30 || rect.height < 16) continue;
-        if (rect.top < 30 || rect.bottom > window.innerHeight - 60) continue;
-
-        const fontSize = parseFloat(style.fontSize) || 14;
-        // Từ chính trên bàn thường rất to (≥ 22–28px trên mobile)
-        if (fontSize < 18) continue;
-
-        let score = fontSize * 4;
-
-        // Càng gần giữa màn hình càng cao điểm
-        const dy = Math.abs((rect.top + rect.height / 2) - centerY);
-        const dx = Math.abs((rect.left + rect.width / 2) - centerX);
-        score += Math.max(0, 80 - dy / 3);
-        score += Math.max(0, 40 - dx / 4);
-
-        if (style.fontWeight === 'bold' || parseInt(style.fontWeight, 10) >= 600) score += 25;
-        // Ưu tiên màu tối (chữ chính)
-        const color = style.color || '';
-        if (/rgb\(\s*0\s*,\s*0\s*,\s*0|rgb\(\s*17|rgb\(\s*31|#0|#1|#2/i.test(color)) score += 15;
-
-        candidates.push({ text, score, fontSize, top: rect.top });
-      }
-
-      if (!candidates.length) {
-        // Fallback nhẹ: quét lại với font nhỏ hơn một chút, vẫn blacklist
-        for (const el of nodes) {
-          if (el.closest('#' + HELPER_ID)) continue;
-          const text = (el.innerText || el.textContent || '').trim();
-          if (!isValidTwoSyllable(text) || isBlacklisted(text)) continue;
-          if (text.split(' ').length !== 2) continue;
-          const style = window.getComputedStyle(el);
-          const fontSize = parseFloat(style.fontSize) || 0;
-          const rect = el.getBoundingClientRect();
-          if (fontSize < 16 || rect.top < 40 || rect.top > window.innerHeight - 100) continue;
-          candidates.push({ text, score: fontSize * 2, fontSize, top: rect.top });
-        }
-      }
-
+        const minFontSize = isMobile ? 14 : 20;
+        const topBound = isMobile ? 40 : 60;
+        const bottomBound = isMobile ? 90 : 140;
+        if (fontSize < minFontSize || rect.top < topBound || rect.top > window.innerHeight - bottomBound) return;
+        let score = fontSize * 2;
+        if (style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 600) score += 25;
+        const centerY = window.innerHeight / 2;
+        score += Math.max(0, 40 - Math.abs(rect.top + rect.height / 2 - centerY) / 8);
+        candidates.push({ text, score, fontSize });
+      });
       if (!candidates.length) return null;
       candidates.sort((a, b) => b.score - a.score || b.fontSize - a.fontSize);
       return candidates[0].text;
     }
 
-    // ===== Input & chặn bàn phím =====
-    function getAnswerInput() {
-      return (
-        document.querySelector('input.word-link-answer-input') ||
-        document.querySelector('input[class*="word-link-answer"]') ||
-        document.querySelector('input[class*="answer"]') ||
-        document.querySelector('input[placeholder*="từ"]') ||
-        document.querySelector('input[placeholder*="Từ"]') ||
-        document.querySelector('input[type="text"]') ||
-        document.querySelector('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])')
-      );
+    function chipHtml(full, kind) {
+      const second = full.split(/\s+/)[1];
+      const styles = {
+        trap: { bg: 'rgba(255,215,0,.16)', border: '#f5c518', color: '#92400e', mark: '★' },
+        dead: { bg: 'rgba(255,92,122,.12)', border: 'rgba(255,92,122,.55)', color: '#be123c', mark: '✗' },
+        risk: { bg: 'rgba(255,183,0,.12)', border: 'rgba(255,183,0,.5)', color: '#b45309', mark: '✗' },
+        ok: { bg: '#f0fdf4', border: '#86efac', color: '#166534', mark: '' }
+      };
+      const s = styles[kind] || styles.ok;
+      const mark = s.mark ? `<span style="font-weight:800;margin-right:3px;">${s.mark}</span>` : '';
+      return `<div class="sugg" data-full="${full}" data-kind="${kind}"
+        style="display:inline-flex;align-items:center;padding:${isMobile ? '7px 12px' : '5px 11px'};
+               background:${s.bg};border:1.5px solid ${s.border};border-radius:999px;
+               cursor:pointer;font-size:${isMobile ? '14px' : '13px'};
+               font-weight:${kind === 'trap' ? '700' : '500'};color:${s.color};
+               white-space:nowrap;">
+        <span class="sugg-text">${mark}${second}</span>
+      </div>`;
     }
 
-    function lockKeyboard() {
-      const input = getAnswerInput();
-      if (!input) return;
-      try {
-        input.setAttribute('readonly', 'readonly');
-        input.setAttribute('inputmode', 'none');
-        input.setAttribute('autocomplete', 'off');
-        if (document.activeElement === input) input.blur();
-      } catch (e) {}
+    function sectionHtml(title, color, items, kind) {
+      if (!items.length) return '';
+      return `<div style="margin-bottom:10px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:${color};margin:0 0 6px;display:flex;align-items:center;gap:6px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:${color};display:inline-block;"></span>
+          ${title} <span style="font-weight:500;opacity:.7;">(${items.length})</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">${items.map(w => chipHtml(w, kind)).join('')}</div>
+      </div>`;
     }
 
-    function unlockKeyboard() {
-      const input = getAnswerInput();
-      if (!input) return;
-      try {
-        input.removeAttribute('readonly');
-        input.removeAttribute('inputmode');
-      } catch (e) {}
-    }
-
-    function fillWithoutFocus(el, text) {
-      try {
-        el.setAttribute('readonly', 'readonly');
-        el.setAttribute('inputmode', 'none');
-
-        const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-        if (setter) setter.call(el, text);
-        else el.value = text;
-
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        try {
-          el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
-        } catch (e) {}
-        return true;
-      } catch (e) {
-        return false;
-      }
-    }
-
-    function clickSubmit() {
-      let btn =
-        document.querySelector('button[class*="submitBtn"]') ||
-        document.querySelector('button[class*="submit"]') ||
-        document.querySelector('button[type="submit"]');
-
-      if (!btn) {
-        const buttons = Array.from(document.querySelectorAll('button'));
-        btn = buttons.find(b => {
-          const t = (b.textContent || '').trim().toLowerCase();
-          if (/gửi|send|submit|ok|xác nhận/i.test(t)) return true;
-          // Nút tròn có icon paper-plane
-          if (b.querySelector('svg')) {
-            const r = b.getBoundingClientRect();
-            if (r.width >= 36 && r.width <= 56 && r.height >= 36 && r.height <= 56) return true;
-          }
-          return false;
-        });
-      }
-
-      if (btn) {
-        btn.click();
-        return true;
-      }
-
-      const input = getAnswerInput();
-      if (input) {
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-        input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-        return true;
-      }
-      return false;
-    }
-
-    function autoPasteAndSubmit(text) {
-      const input = getAnswerInput();
-      if (!input) {
-        statusEl.textContent = 'Không thấy ô nhập';
-        statusEl.style.color = '#dc2626';
-        return;
-      }
-      fillWithoutFocus(input, text);
-      setTimeout(() => clickSubmit(), 70);
-      setTimeout(() => {
-        if (input.value && normWord(input.value) === normWord(text)) clickSubmit();
-      }, 320);
+    let tooltip = document.getElementById('noitu-tooltip');
+    if (!tooltip) {
+      tooltip = document.createElement('div');
+      tooltip.id = 'noitu-tooltip';
+      Object.assign(tooltip.style, {
+        position: 'fixed', zIndex: '1000000', background: '#111827', color: '#f9fafb',
+        padding: '10px 12px', borderRadius: '12px', fontSize: '13px', maxWidth: '280px',
+        maxHeight: '220px', overflowY: 'auto', boxShadow: '0 10px 30px rgba(0,0,0,.35)',
+        display: 'none', pointerEvents: 'none', lineHeight: '1.5'
+      });
+      document.body.appendChild(tooltip);
     }
 
     function markAsBad(word) {
@@ -399,71 +561,112 @@
       if (badWords.has(norm)) return;
       badWords.add(norm);
       saveBadWords(badWords);
-      statusEl.textContent = 'Từ lỗi';
+      renderBadList();
+      statusEl.textContent = `Đã lưu từ lỗi: ${norm}`;
       statusEl.style.color = '#dc2626';
       setTimeout(() => {
         if (isReady) {
-          statusEl.textContent = `OK (${byFirst.size})`;
+          statusEl.textContent = `Sẵn sàng`;
           statusEl.style.color = '#10b981';
         }
-      }, 1500);
+      }, 2000);
+    }
+
+    function markAsNewFromOpponent(word) {
+      if (!word) return;
+      const norm = normWord(word);
+      if (!norm || norm.split(' ').length !== 2) return;
+      const first = norm.split(' ')[0];
+      const known = (byFirst.get(first) || []).includes(norm);
+      if (known) return;
+      if (newWords.has(norm)) return;
+      newWords.add(norm);
+      saveNewWords(newWords);
+      renderNewList();
+    }
+
+    // ===== Tự bỏ qua – chỉ 1 lần =====
+    function sendEscape() {
+      const skipBtn = Array.from(document.querySelectorAll('button')).find(b =>
+        /bỏ qua|skip|pass/i.test((b.textContent || '').trim())
+      );
+      if (skipBtn) {
+        skipBtn.click();
+      } else {
+        const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
+        const targets = [input, document].filter(Boolean);
+        targets.forEach(target => {
+          target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
+          target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
+        });
+      }
+      statusEl.textContent = 'Đã tự bỏ qua';
+      statusEl.style.color = '#dc2626';
+      setTimeout(() => {
+        if (isReady) {
+          statusEl.textContent = `Sẵn sàng`;
+          statusEl.style.color = '#10b981';
+        }
+      }, 2000);
+    }
+
+    function scheduleEscape() {
+      if (!autoEnabled) return;
+      if (Date.now() - lastEscTime < ESC_COOLDOWN) return;
+      if (lastEscWord === lastWord) return;
+      if (actionInFlight) return;
+      clearTimeout(escTimer);
+      actionInFlight = true;
+      lastEscWord = lastWord;
+      const delay = 700 + Math.random() * 400;
+      escTimer = setTimeout(() => {
+        if (!autoEnabled) {
+          actionInFlight = false;
+          return;
+        }
+        if (lastEscWord !== lastWord) {
+          actionInFlight = false;
+          return;
+        }
+        if (Date.now() - lastEscTime < ESC_COOLDOWN) {
+          actionInFlight = false;
+          return;
+        }
+        lastEscTime = Date.now();
+        sendEscape();
+        setTimeout(() => {
+          actionInFlight = false;
+        }, 3500);
+      }, delay);
     }
 
     function detectSubmitFailed(attemptedWord) {
       const current = findCurrentWord();
       if (current && normWord(current) === normWord(lastWord)) return true;
-      const input = getAnswerInput();
+      const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
       if (input && input.value && normWord(input.value) === normWord(attemptedWord)) return true;
       const errEl = Array.from(document.querySelectorAll('div, span, p')).find(el => {
-        if (el.closest('#' + HELPER_ID)) return false;
+        if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2')) return false;
         const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-        return t && /không tồn tại|không hợp lệ|không có trong|sai|lỗi|invalid|not found/.test(t) && t.length < 90;
+        return t && /không tồn tại|không hợp lệ|không có trong|sai|lỗi|invalid|not found/.test(t) && t.length < 80;
       });
-      return !!errEl;
+      if (errEl) return true;
+      return false;
     }
 
-    function sendEscape() {
-      clearTimeout(escTimer);
-      const input = getAnswerInput();
-      const targets = [input, document].filter(Boolean);
-      targets.forEach(target => {
-        target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
-        target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
-      });
-      const skipBtn = Array.from(document.querySelectorAll('button')).find(b =>
-        /bỏ qua|skip|pass|esc/i.test((b.textContent || '').trim())
-      );
-      if (skipBtn) skipBtn.click();
-      statusEl.textContent = 'Bỏ qua';
-      statusEl.style.color = '#dc2626';
-      setTimeout(() => {
-        if (isReady) {
-          statusEl.textContent = `OK (${byFirst.size})`;
-          statusEl.style.color = '#10b981';
-        }
-      }, 1300);
-    }
-
-    function scheduleEscape() {
-      if (actionInFlight) return;
-      clearTimeout(escTimer);
-      actionInFlight = true;
-      escTimer = setTimeout(() => {
-        actionInFlight = false;
-        if (!autoEnabled) return;
-        sendEscape();
-      }, 400 + Math.random() * 280);
-    }
-
-    function performSubmit(full) {
+    function performSubmit(full, el) {
       lastAttemptedWord = full;
       justSubmittedByMe = true;
       usedWords.add(full);
       actionInFlight = true;
-      statusEl.textContent = 'Gửi...';
-      statusEl.style.color = '#059669';
       autoPasteAndSubmit(full);
-
+      if (el) {
+        const oldBg = el.style.background;
+        const textEl = el.querySelector('.sugg-text');
+        el.style.background = '#059669';
+        if (textEl) textEl.style.color = 'white';
+        setTimeout(() => { el.style.background = oldBg; }, 400);
+      }
       clearTimeout(checkAcceptTimer);
       checkAcceptTimer = setTimeout(() => {
         if (lastAttemptedWord && detectSubmitFailed(lastAttemptedWord)) {
@@ -474,46 +677,20 @@
               usedWords.delete(lastAttemptedWord);
               justSubmittedByMe = false;
               actionInFlight = false;
-              if (autoEnabled) setTimeout(() => { if (autoEnabled) tryAutoPlay(); }, 400);
+              suggest(lastWord);
+              if (autoEnabled) {
+                setTimeout(() => {
+                  if (autoEnabled) tryAutoPlay();
+                }, 600);
+              }
             } else {
               actionInFlight = false;
             }
-          }, 1100);
+          }, 1500);
         } else {
           actionInFlight = false;
         }
-      }, 4200);
-    }
-
-    function pickBestWord(word) {
-      if (!word || !isReady) return null;
-      const key = getLastSyllable(word);
-      const curNorm = normWord(word);
-      const allForKey = byFirst.get(key) || [];
-      const available = allForKey.filter(w =>
-        w !== curNorm && !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w)
-      );
-      if (!available.length) return null;
-
-      const traps = [], deads = [], risks = [], oks = [];
-      available.forEach(full => {
-        if (trapSet.has(full)) traps.push(full);
-        else if (isDeadEndWord(full)) deads.push(full);
-        else if (isRiskyTrap(full)) risks.push(full);
-        else oks.push(full);
-      });
-
-      const byCont = (a, b) => contCountOf(a) - contCountOf(b);
-      traps.sort(byCont);
-      deads.sort(byCont);
-      risks.sort(byCont);
-      oks.sort(byCont);
-
-      if (deads.length) return deads[0];
-      if (traps.length) return traps[0];
-      if (oks.length) return oks[0];
-      if (risks.length) return risks[0];
-      return null;
+      }, 5000);
     }
 
     function tryAutoPlay() {
@@ -522,136 +699,293 @@
       clearTimeout(autoTimer);
       clearTimeout(checkAcceptTimer);
       clearTimeout(escTimer);
-
-      if (!lastWord) {
-        statusEl.textContent = 'Chưa thấy từ';
-        statusEl.style.color = '#d97706';
-        return;
-      }
-
-      const best = pickBestWord(lastWord);
-      if (!best) {
-        statusEl.textContent = 'Hết từ → ESC';
-        statusEl.style.color = '#d97706';
+      const chips = resultEl.querySelectorAll('.sugg');
+      if (!chips.length) {
         scheduleEscape();
         return;
       }
-
+      let best = null;
+      for (const el of chips) {
+        if (el.dataset.kind === 'dead') { best = el; break; }
+      }
+      if (!best) {
+        for (const el of chips) {
+          if (el.dataset.kind === 'trap') { best = el; break; }
+        }
+      }
+      if (!best) {
+        for (const el of chips) {
+          if (el.dataset.kind === 'ok') { best = el; break; }
+        }
+      }
+      if (!best) {
+        for (const el of chips) {
+          if (el.dataset.kind === 'risk') { best = el; break; }
+        }
+      }
+      if (!best) {
+        scheduleEscape();
+        return;
+      }
+      const delay = 60 + Math.random() * 120;
       actionInFlight = true;
       autoTimer = setTimeout(() => {
         if (!autoEnabled) { actionInFlight = false; return; }
-        performSubmit(best);
-      }, 40 + Math.random() * 80);
+        const full = best.dataset.full;
+        performSubmit(full, best);
+      }, delay);
     }
 
-    autoBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      autoEnabled = !autoEnabled;
-      saveAuto(autoEnabled);
-      updateAutoBtn();
-
-      if (autoEnabled) {
-        lockKeyboard();
-        statusEl.textContent = 'Auto ON';
-        statusEl.style.color = '#059669';
-        if (lastWord) tryAutoPlay();
-        else {
-          statusEl.textContent = 'Chờ từ...';
-          statusEl.style.color = '#d97706';
-        }
-      } else {
-        unlockKeyboard();
-        clearTimeout(autoTimer);
-        clearTimeout(checkAcceptTimer);
-        clearTimeout(escTimer);
-        actionInFlight = false;
-        statusEl.textContent = isReady ? `OK (${byFirst.size})` : 'Tải từ...';
-        statusEl.style.color = isReady ? '#10b981' : '#d97706';
+    function suggest(word) {
+      if (!word) {
+        currentEl.textContent = 'Chưa tìm thấy từ';
+        resultEl.innerHTML = '';
+        if (autoEnabled) scheduleEscape();
+        return;
       }
-    });
+      currentEl.textContent = word;
+      if (!isReady) {
+        resultEl.innerHTML = `<div style="color:#d97706;font-size:13px;">Đang tải từ điển...</div>`;
+        return;
+      }
+      const key = getLastSyllable(word);
+      const curNorm = normWord(word);
+      const allForKey = byFirst.get(key) || [];
+      const available = allForKey.filter(w => w !== curNorm && !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w));
+      if (!available.length) {
+        resultEl.innerHTML = `<div style="color:#d97706;font-size:13px;padding:6px;">Hết từ · Đang bỏ qua...</div>`;
+        if (autoEnabled) scheduleEscape();
+        return;
+      }
+      const traps = [], deads = [], risks = [], oks = [];
+      available.forEach(full => {
+        if (trapSet.has(full)) {
+          traps.push(full);
+        } else if (isDeadEndWord(full)) {
+          deads.push(full);
+        } else if (isRiskyTrap(full)) {
+          risks.push(full);
+        } else {
+          oks.push(full);
+        }
+      });
+      const byCont = (a, b) => contCountOf(a) - contCountOf(b);
+      traps.sort(byCont);
+      deads.sort(byCont);
+      risks.sort(byCont);
+      oks.sort(byCont);
+      const lim = isMobile ? 12 : 20;
+      resultEl.innerHTML =
+        sectionHtml('★ Nên dùng (bẫy)', '#b45309', traps.slice(0, lim), 'trap') +
+        sectionHtml('✗ Cụt — hết đường', '#be123c', deads.slice(0, lim), 'dead') +
+        sectionHtml('Gợi ý thường', '#166534', oks.slice(0, lim), 'ok') +
+        sectionHtml('✗ Không nên dùng', '#d97706', risks.slice(0, lim), 'risk');
+
+      resultEl.querySelectorAll('.sugg').forEach(el => {
+        el.onmouseenter = () => {
+          el.style.filter = 'brightness(0.92)';
+          el.style.transform = 'translateY(-1px)';
+          const full = el.dataset.full;
+          const nextKey = getLastSyllable(full);
+          const nextList = (byFirst.get(nextKey) || []).filter(w => !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w));
+          if (!nextList.length) {
+            tooltip.innerHTML = `<div style="opacity:.7">Không còn từ nối tiếp sau "<b>${nextKey}</b>"</div>`;
+          } else {
+            const nextTraps = [], nextDeads = [], nextOks = [];
+            nextList.forEach(w => {
+              if (trapSet.has(w)) nextTraps.push(w);
+              else if (isDeadEndWord(w)) nextDeads.push(w);
+              else nextOks.push(w);
+            });
+            let html = `<div style="font-weight:700;margin-bottom:6px;color:#6ee7b7">Nối tiếp sau "<b>${nextKey}</b>" (${nextList.length})</div>`;
+            if (nextTraps.length) {
+              html += `<div style="color:#fbbf24;margin:4px 0 2px">★ Bẫy:</div>`;
+              html += nextTraps.slice(0, 8).map(w => `<div>• ${w.split(' ')[1]}</div>`).join('');
+            }
+            if (nextDeads.length) {
+              html += `<div style="color:#f87171;margin:4px 0 2px">✗ Cụt:</div>`;
+              html += nextDeads.slice(0, 6).map(w => `<div>• ${w.split(' ')[1]}</div>`).join('');
+            }
+            if (nextOks.length) {
+              html += `<div style="color:#86efac;margin:4px 0 2px">Thường:</div>`;
+              html += nextOks.slice(0, 10).map(w => `<div>• ${w.split(' ')[1]}</div>`).join('');
+            }
+            tooltip.innerHTML = html;
+          }
+          const rect = el.getBoundingClientRect();
+          tooltip.style.display = 'block';
+          tooltip.style.left = Math.min(rect.left, window.innerWidth - 300) + 'px';
+          tooltip.style.top = (rect.bottom + 8) + 'px';
+        };
+        el.onmouseleave = () => {
+          el.style.filter = '';
+          el.style.transform = '';
+          tooltip.style.display = 'none';
+        };
+        el.onclick = () => {
+          if (actionInFlight) return;
+          const full = el.dataset.full;
+          performSubmit(full, el);
+          tooltip.style.display = 'none';
+        };
+      });
+      if (autoEnabled) tryAutoPlay();
+    }
+
+    // ===== FIX BÀN PHÍM CHO QUETTA / ANDROID =====
+    function fillEditable(el, text) {
+      try {
+        el.setAttribute('readonly', 'readonly');
+        el.setAttribute('inputmode', 'none');
+        el.setAttribute('autocomplete', 'off');
+        el.style.caretColor = 'transparent';
+        el.style.pointerEvents = 'none';
+
+        const proto = el.tagName === 'TEXTAREA'
+          ? HTMLTextAreaElement.prototype
+          : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+
+        if (setter) setter.call(el, text);
+        else el.value = text;
+
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function autoPasteAndSubmit(text) {
+      const input = document.querySelector(
+        'input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]'
+      );
+      if (!input) return;
+
+      fillEditable(input, text);
+
+      try {
+        input.focus({ preventScroll: true });
+      } catch (e) {}
+
+      setTimeout(() => {
+        let btn =
+          document.querySelector('button[class*="submitBtn"], button[class*="submit"]') ||
+          Array.from(document.querySelectorAll('button')).find(b =>
+            b.querySelector('svg') ||
+            /gửi|submit|ok|xác nhận|gửi từ/i.test((b.textContent || '').trim())
+          );
+
+        if (btn) {
+          btn.click();
+        } else {
+          ['keydown', 'keypress', 'keyup'].forEach(type => {
+            input.dispatchEvent(new KeyboardEvent(type, {
+              key: 'Enter',
+              code: 'Enter',
+              keyCode: 13,
+              which: 13,
+              bubbles: true,
+              cancelable: true
+            }));
+          });
+        }
+
+        input.blur();
+        if (document.activeElement && document.activeElement !== document.body) {
+          document.activeElement.blur();
+        }
+
+        setTimeout(() => {
+          input.removeAttribute('readonly');
+          input.removeAttribute('inputmode');
+          input.removeAttribute('autocomplete');
+          input.style.caretColor = '';
+          input.style.pointerEvents = '';
+        }, 500);
+      }, 50);
+    }
 
     function tick() {
-      if (autoEnabled) lockKeyboard();
-
       const word = findCurrentWord();
-      if (word) {
-        currentEl.textContent = '📌 ' + word;
-        currentEl.style.color = '#065f46';
-      } else {
-        currentEl.textContent = autoEnabled ? 'Đang tìm từ...' : '';
-        currentEl.style.color = '#9ca3af';
-      }
-
       if (word && word !== lastWord) {
         const norm = normWord(word);
+        const isTwoSyllable = norm && norm.split(' ').length === 2;
+        if (isTwoSyllable && !justSubmittedByMe) {
+          markAsNewFromOpponent(norm);
+        }
         justSubmittedByMe = false;
-        if (norm.split(' ').length === 2) allSeenWords.add(norm);
+        if (isTwoSyllable) allSeenWords.add(norm);
         lastWord = word;
+        lastEscWord = null;
         lastAttemptedWord = null;
         actionInFlight = false;
         clearTimeout(checkAcceptTimer);
         clearTimeout(escTimer);
         clearTimeout(autoTimer);
-
-        if (autoEnabled) {
-          statusEl.textContent = 'Có từ mới';
-          statusEl.style.color = '#059669';
-          tryAutoPlay();
-        }
+        suggest(word);
       }
     }
 
-    // Kéo thả
-    let dragging = false, ox = 0, oy = 0;
-    function startDrag(x, y) {
-      const rect = panel.getBoundingClientRect();
-      ox = x - rect.left;
-      oy = y - rect.top;
-      panel.style.left = rect.left + 'px';
-      panel.style.top = rect.top + 'px';
-      panel.style.right = 'auto';
-      panel.style.bottom = 'auto';
+    // ===== Kéo thả =====
+    function attachDrag(panelEl, headerEl, savePosFn, excludeSelectors) {
+      let dragging = false, ox = 0, oy = 0;
+      function start(x, y, target) {
+        if (excludeSelectors.some(sel => target.closest(sel))) return false;
+        const rect = panelEl.getBoundingClientRect();
+        ox = x - rect.left;
+        oy = y - rect.top;
+        panelEl.style.left = rect.left + 'px';
+        panelEl.style.top = rect.top + 'px';
+        panelEl.style.right = 'auto';
+        panelEl.style.bottom = 'auto';
+        return true;
+      }
+      function move(x, y) {
+        const w = panelEl.offsetWidth, h = panelEl.offsetHeight;
+        let left = Math.max(4, Math.min(window.innerWidth - w - 4, x - ox));
+        let top = Math.max(4, Math.min(window.innerHeight - h - 4, y - oy));
+        panelEl.style.left = left + 'px';
+        panelEl.style.top = top + 'px';
+        savePosFn(panelEl.style.left, panelEl.style.top);
+      }
+      panelEl.addEventListener('mousedown', e => { dragging = start(e.clientX, e.clientY, e.target); });
+      document.addEventListener('mousemove', e => { if (dragging) move(e.clientX, e.clientY); });
+      document.addEventListener('mouseup', () => dragging = false);
+      headerEl.addEventListener('touchstart', e => {
+        dragging = start(e.touches[0].clientX, e.touches[0].clientY, e.target);
+      }, { passive: true });
+      panelEl.addEventListener('touchmove', e => {
+        if (!dragging) return;
+        move(e.touches[0].clientX, e.touches[0].clientY);
+        e.preventDefault();
+      }, { passive: false });
+      panelEl.addEventListener('touchend', () => dragging = false);
     }
-    function moveDrag(x, y) {
-      const w = panel.offsetWidth, h = panel.offsetHeight;
-      let left = Math.max(4, Math.min(window.innerWidth - w - 4, x - ox));
-      let top = Math.max(4, Math.min(window.innerHeight - h - 4, y - oy));
-      panel.style.left = left + 'px';
-      panel.style.top = top + 'px';
-      savePosition(panel.style.left, panel.style.top);
-    }
+    attachDrag(panel, headerEl, savePosition, ['.sugg', '#noitu-toggle', '#noitu-auto', '#noitu-clear']);
+    attachDrag(panel2, header2El, savePosition2, ['#noitu-toggle2', '#noitu-clear-bad', '#noitu-clear-new', '#noitu-copy-new']);
 
-    headerEl.addEventListener('touchstart', e => {
-      if (e.target.closest('#noitu-m-auto')) return;
-      dragging = true;
-      startDrag(e.touches[0].clientX, e.touches[0].clientY);
-    }, { passive: true });
-    panel.addEventListener('touchmove', e => {
-      if (!dragging) return;
-      moveDrag(e.touches[0].clientX, e.touches[0].clientY);
-      e.preventDefault();
-    }, { passive: false });
-    panel.addEventListener('touchend', () => { dragging = false; });
-
-    headerEl.addEventListener('mousedown', e => {
-      if (e.target.closest('#noitu-m-auto')) return;
-      dragging = true;
-      startDrag(e.clientX, e.clientY);
-    });
-    document.addEventListener('mousemove', e => { if (dragging) moveDrag(e.clientX, e.clientY); });
-    document.addEventListener('mouseup', () => { dragging = false; });
-
-    if (autoEnabled) lockKeyboard();
     tick();
-    if (!window.__noituMobileTick) {
-      window.__noituMobileTick = setInterval(tick, 650);
-    }
+    if (!window.__noituTickInterval) window.__noituTickInterval = setInterval(tick, 1100);
   }
 
   createHelper();
-  if (!window.__noituMobileWatchdog) {
-    window.__noituMobileWatchdog = setInterval(() => {
-      if (!document.getElementById(HELPER_ID)) createHelper();
-    }, 1800);
+
+  // Chặn focus mở bàn phím trên Quetta
+  document.addEventListener('focusin', function(e) {
+    const el = e.target;
+    if (el.matches && el.matches('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]')) {
+      if (el.hasAttribute('readonly') || el.getAttribute('inputmode') === 'none') {
+        el.blur();
+      }
+    }
+  }, true);
+
+  if (!window.__noituWatchdog) {
+    window.__noituWatchdog = setInterval(() => {
+      if (!document.getElementById(HELPER_ID) || !document.getElementById(HELPER2_ID)) createHelper();
+    }, 1500);
   }
 })();
