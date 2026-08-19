@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Nối Từ Helper (noitu.fun)
 // @namespace    http://tampermonkey.net/
-// @version      1.26
+// @version      1.27
 // @description  Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + ẩn từ đã dùng + tự bỏ từ lỗi + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua đúng 1 lần + ghi từ mới từ đối thủ + 2 bảng riêng + khóa chống trùng + hiện số từ chính xác + fix bàn phím Quetta/Android + tối ưu mobile
 // @author       You
 // @match        https://www.noitu.fun/*
@@ -83,29 +83,24 @@
     const panel = document.createElement('div');
     panel.id = HELPER_ID;
 
-    // Nút Xóa chỉ hiện trên desktop
-    const clearBtnHtml = isMobile ? '' : `
-      <button id="noitu-clear" title="Xóa lịch sử từ đã dùng trong phiên" style="border:none;background:#fef2f2;color:#b91c1c;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:600;cursor:pointer;">Xóa</button>
-    `;
-
     // Nút thu nhỏ nhỏ hơn trên mobile
     const toggleSize = isMobile ? '22px' : '28px';
     const toggleFont = isMobile ? '13px' : '15px';
 
     panel.innerHTML = `
-      <div id="noitu-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:grab;">
-        <div style="font-weight:700;font-size:15px;">🧠 Gợi ý Nối Từ <span id="noitu-word-count" style="font-weight:500;font-size:12px;color:#059669;margin-left:6px;"></span></div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <button id="noitu-auto" style="border:none;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;">Tự chọn</button>
-          ${clearBtnHtml}
-          <div id="noitu-status" style="font-size:11px;color:#10b981;">Sẵn sàng</div>
+      <div id="noitu-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;cursor:grab;gap:4px;">
+        <div style="font-weight:700;font-size:${isMobile ? '14px' : '15px'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🧠 Gợi ý <span id="noitu-word-count" style="font-weight:500;font-size:11px;color:#059669;margin-left:4px;"></span></div>
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+          <button id="noitu-auto" style="border:none;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;cursor:pointer;">Tự chọn</button>
+          <button id="noitu-clear" style="display:none;border:none;background:#fef2f2;color:#b91c1c;border-radius:8px;padding:3px 7px;font-size:11px;font-weight:600;cursor:pointer;">Xóa</button>
+          <div id="noitu-status" style="font-size:10px;color:#10b981;white-space:nowrap;"></div>
           <button id="noitu-toggle" style="border:none;background:#ecfdf5;color:#065f46;border-radius:8px;width:${toggleSize};height:${toggleSize};font-size:${toggleFont};font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</button>
         </div>
       </div>
       <div id="noitu-body">
-        <div id="noitu-current" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:16px;font-weight:600;text-align:center;border:1px solid #6ee7b7;color:#065f46;">Đang tìm từ...</div>
-        <div id="noitu-result" style="display:flex;flex-wrap:wrap;gap:8px;max-height:${isMobile ? '32vh' : '360px'};overflow-y:auto;padding:2px;-webkit-overflow-scrolling:touch;"></div>
-        <div style="margin-top:10px;font-size:11px;color:#6b7280;text-align:center;">Chạm chữ → tự dán + gửi · Hover xem chữ nối tiếp</div>
+        <div id="noitu-current" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);padding:8px 10px;border-radius:10px;margin-bottom:10px;font-size:15px;font-weight:600;text-align:center;border:1px solid #6ee7b7;color:#065f46;">Đang tìm từ...</div>
+        <div id="noitu-result" style="display:flex;flex-wrap:wrap;gap:6px;max-height:${isMobile ? '28vh' : '360px'};overflow-y:auto;padding:2px;-webkit-overflow-scrolling:touch;"></div>
+        <div style="margin-top:8px;font-size:10px;color:#6b7280;text-align:center;">Chạm chữ → tự dán + gửi</div>
       </div>
     `;
 
@@ -113,16 +108,17 @@
       position: 'fixed',
       background: '#ffffff',
       border: '2px solid #10b981',
-      borderRadius: '16px',
-      padding: isMobile ? '12px 14px' : '16px',
+      borderRadius: '14px',
+      padding: isMobile ? '10px 12px' : '16px',
       zIndex: '999999',
       boxShadow: '0 12px 40px rgba(16,185,129,0.25)',
       fontFamily: 'system-ui, -apple-system, sans-serif',
       userSelect: 'none',
       touchAction: 'none',
       boxSizing: 'border-box',
-      width: isMobile ? 'auto' : '340px',
-      maxWidth: isMobile ? 'none' : '340px'
+      // Gọn chiều ngang trên mobile
+      width: isMobile ? 'min(92vw, 320px)' : '340px',
+      maxWidth: isMobile ? '92vw' : '340px'
     });
 
     if (savedPos && savedPos.left && savedPos.top) {
@@ -132,8 +128,9 @@
       panel.style.bottom = 'auto';
     } else if (isMobile) {
       panel.style.bottom = '12px';
-      panel.style.left = '8px';
-      panel.style.right = '8px';
+      panel.style.left = '50%';
+      panel.style.transform = 'translateX(-50%)';
+      panel.style.right = 'auto';
       panel.style.top = 'auto';
     } else {
       panel.style.top = '90px';
@@ -213,9 +210,8 @@
     const toggleBtn = document.getElementById('noitu-toggle');
     const headerEl = document.getElementById('noitu-header');
     const autoBtn = document.getElementById('noitu-auto');
-    const clearBtn = document.getElementById('noitu-clear'); // có thể null trên mobile
+    const clearBtn = document.getElementById('noitu-clear');
 
-    // Các phần tử bảng 2 chỉ tồn tại trên desktop
     const header2El = document.getElementById('noitu-header2');
     const body2El = document.getElementById('noitu-body2');
     const toggle2Btn = document.getElementById('noitu-toggle2');
@@ -232,10 +228,14 @@
         autoBtn.style.background = '#059669';
         autoBtn.style.color = 'white';
         autoBtn.textContent = 'Tự chọn: Bật';
+        // Hiện nút Xóa khi bật tự chọn
+        if (clearBtn) clearBtn.style.display = 'inline-block';
       } else {
         autoBtn.style.background = '#f3f4f6';
         autoBtn.style.color = '#374151';
         autoBtn.textContent = 'Tự chọn';
+        // Ẩn nút Xóa khi tắt tự chọn
+        if (clearBtn) clearBtn.style.display = 'none';
       }
     }
     updateAutoBtn();
@@ -246,7 +246,6 @@
       saveAuto(autoEnabled);
       updateAutoBtn();
 
-      // Khi tắt tự chọn → xóa lịch sử từ đã chơi
       if (!autoEnabled) {
         usedWords.clear();
         clearTimeout(autoTimer);
@@ -262,21 +261,20 @@
       clearBtn.addEventListener('click', e => {
         e.stopPropagation();
         usedWords.clear();
-        allSeenWords.clear();
         clearTimeout(autoTimer);
         clearTimeout(checkAcceptTimer);
         clearTimeout(escTimer);
         actionInFlight = false;
         lastEscWord = null;
         lastEscTime = 0;
-        statusEl.textContent = 'Đã xóa lịch sử phiên';
+        statusEl.textContent = 'Đã xóa';
         statusEl.style.color = '#d97706';
         setTimeout(() => {
           if (isReady) {
             statusEl.textContent = `Sẵn sàng`;
             statusEl.style.color = '#10b981';
           }
-        }, 1500);
+        }, 1200);
         if (lastWord) suggest(lastWord);
       });
     }
@@ -294,7 +292,7 @@
         lastEscWord = null;
         lastEscTime = 0;
         if (lastWord) suggest(lastWord);
-        statusEl.textContent = 'Đã xóa danh sách từ lỗi';
+        statusEl.textContent = 'Đã xóa từ lỗi';
         statusEl.style.color = '#d97706';
         setTimeout(() => {
           if (isReady) {
@@ -420,7 +418,7 @@
     let lastEscTime = 0;
     const ESC_COOLDOWN = 5500;
 
-    statusEl.textContent = 'Đang tải kho từ...';
+    statusEl.textContent = 'Đang tải...';
     statusEl.style.color = '#d97706';
     wordCountEl.textContent = '';
 
@@ -459,8 +457,8 @@
 
     function updateWordCountDisplay() {
       if (isReady) {
-        wordCountEl.textContent = `(${totalValidWords.toLocaleString('vi-VN')} từ)`;
-        statusEl.textContent = `Sẵn sàng · ${byFirst.size} âm`;
+        wordCountEl.textContent = `(${totalValidWords.toLocaleString('vi-VN')})`;
+        statusEl.textContent = `Sẵn sàng`;
         statusEl.style.color = '#10b981';
       }
     }
@@ -477,7 +475,7 @@
         })
         .catch(() => {
           isReady = false;
-          statusEl.textContent = 'Lỗi tải kho từ';
+          statusEl.textContent = 'Lỗi tải';
           statusEl.style.color = '#dc2626';
           wordCountEl.textContent = '';
         });
@@ -491,7 +489,6 @@
     function isDeadEndWord(word) {
       const ns = lastSyllable(word);
       const opts = byFirst.get(ns) || [];
-      // Chỉ kiểm tra usedWords khi đang bật tự chọn
       const checkUsed = autoEnabled ? usedWords : new Set();
       return opts.filter(w => w !== word && !checkUsed.has(w) && !allSeenWords.has(w) && !badWords.has(w)).length === 0;
     }
@@ -549,9 +546,9 @@
       const s = styles[kind] || styles.ok;
       const mark = s.mark ? `<span style="font-weight:800;margin-right:3px;">${s.mark}</span>` : '';
       return `<div class="sugg" data-full="${full}" data-kind="${kind}"
-        style="display:inline-flex;align-items:center;padding:${isMobile ? '7px 12px' : '5px 11px'};
+        style="display:inline-flex;align-items:center;padding:${isMobile ? '6px 10px' : '5px 11px'};
                background:${s.bg};border:1.5px solid ${s.border};border-radius:999px;
-               cursor:pointer;font-size:${isMobile ? '14px' : '13px'};
+               cursor:pointer;font-size:${isMobile ? '13px' : '13px'};
                font-weight:${kind === 'trap' ? '700' : '500'};color:${s.color};
                white-space:nowrap;">
         <span class="sugg-text">${mark}${second}</span>
@@ -560,12 +557,12 @@
 
     function sectionHtml(title, color, items, kind) {
       if (!items.length) return '';
-      return `<div style="margin-bottom:10px;">
-        <div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:${color};margin:0 0 6px;display:flex;align-items:center;gap:6px;">
-          <span style="width:6px;height:6px;border-radius:50%;background:${color};display:inline-block;"></span>
+      return `<div style="margin-bottom:8px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:${color};margin:0 0 5px;display:flex;align-items:center;gap:5px;">
+          <span style="width:5px;height:5px;border-radius:50%;background:${color};display:inline-block;"></span>
           ${title} <span style="font-weight:500;opacity:.7;">(${items.length})</span>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;">${items.map(w => chipHtml(w, kind)).join('')}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">${items.map(w => chipHtml(w, kind)).join('')}</div>
       </div>`;
     }
 
@@ -590,7 +587,7 @@
       badWords.add(norm);
       saveBadWords(badWords);
       renderBadList();
-      statusEl.textContent = `Đã lưu từ lỗi: ${norm}`;
+      statusEl.textContent = `Lỗi: ${norm}`;
       statusEl.style.color = '#dc2626';
       setTimeout(() => {
         if (isReady) {
@@ -627,7 +624,7 @@
           target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
         });
       }
-      statusEl.textContent = 'Đã tự bỏ qua';
+      statusEl.textContent = 'Đã bỏ qua';
       statusEl.style.color = '#dc2626';
       setTimeout(() => {
         if (isReady) {
@@ -685,7 +682,6 @@
       lastAttemptedWord = full;
       justSubmittedByMe = true;
 
-      // Chỉ lưu từ đã chơi khi đang bật Tự chọn
       if (autoEnabled) {
         usedWords.add(full);
       }
@@ -784,7 +780,6 @@
       const curNorm = normWord(word);
       const allForKey = byFirst.get(key) || [];
 
-      // Chỉ lọc usedWords khi đang bật tự chọn
       const checkUsed = autoEnabled ? usedWords : new Set();
       const available = allForKey.filter(w => w !== curNorm && !checkUsed.has(w) && !allSeenWords.has(w) && !badWords.has(w));
 
@@ -810,7 +805,7 @@
       deads.sort(byCont);
       risks.sort(byCont);
       oks.sort(byCont);
-      const lim = isMobile ? 12 : 20;
+      const lim = isMobile ? 10 : 20;
       resultEl.innerHTML =
         sectionHtml('★ Nên dùng (bẫy)', '#b45309', traps.slice(0, lim), 'trap') +
         sectionHtml('✗ Cụt — hết đường', '#be123c', deads.slice(0, lim), 'dead') +
@@ -978,6 +973,7 @@
         panelEl.style.top = rect.top + 'px';
         panelEl.style.right = 'auto';
         panelEl.style.bottom = 'auto';
+        panelEl.style.transform = '';
         return true;
       }
       function move(x, y) {
