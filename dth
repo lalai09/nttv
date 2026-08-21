@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Nối Từ Helper (noitu.fun)
 // @namespace    http://tampermonkey.net/
-// @version      1.29
-// @description  Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + ẩn từ lỗi + tự bỏ từ lỗi + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua đúng 1 lần + ghi từ mới từ đối thủ + 2 bảng riêng + khóa chống trùng + hiện số từ chính xác + fix bàn phím Quetta/Android + tối ưu mobile + nhận diện chữ tốt hơn + retry nhanh khi từ lỗi + KHÔNG loại bỏ từ đã dùng
+// @version      1.30
+// @description  Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + ẩn từ lỗi + tự bỏ từ lỗi + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua đúng 1 lần + ghi từ mới từ đối thủ + 2 bảng riêng + khóa chống trùng + hiện số từ chính xác + fix bàn phím Quetta/Android + tối ưu mobile + nhận diện chữ mobile mạnh + retry nhanh + KHÔNG loại bỏ từ đã dùng
 // @author       You
 // @match        https://www.noitu.fun/*
 // @match        https://noitu.fun/*
@@ -73,8 +73,8 @@
     const savedPos = loadPosition();
     const savedPos2 = loadPosition2();
     let autoEnabled = loadAuto();
-    const usedWords = new Set();          // vẫn giữ để theo dõi (nhưng KHÔNG loại khỏi gợi ý)
-    const allSeenWords = new Set();       // vẫn giữ để theo dõi (nhưng KHÔNG loại khỏi gợi ý)
+    const usedWords = new Set();
+    const allSeenWords = new Set();
     const badWords = loadBadWords();
     const newWords = loadNewWords();
 
@@ -478,10 +478,7 @@
     function isDeadEndWord(word) {
       const ns = lastSyllable(word);
       const opts = byFirst.get(ns) || [];
-      return opts.filter(w =>
-        w !== word &&
-        !badWords.has(w)
-      ).length === 0;
+      return opts.filter(w => w !== word && !badWords.has(w)).length === 0;
     }
 
     function isRiskyTrap(word) {
@@ -504,7 +501,7 @@
       return /^[a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+ [a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+$/i.test(text);
     }
 
-    // ====================== TỐI ƯU NHẬN DIỆN CHỮ ======================
+    // ====================== TỐI ƯU NHẬN DIỆN CHỮ (MOBILE MẠNH) ======================
     function findCurrentWord() {
       const candidates = [];
       const input = document.querySelector(
@@ -514,50 +511,69 @@
       const searchRoots = [];
       if (input) {
         let p = input.parentElement;
-        for (let i = 0; i < 6 && p; i++) {
+        for (let i = 0; i < 8 && p; i++) {
           searchRoots.push(p);
           p = p.parentElement;
         }
       }
-      if (!searchRoots.length) searchRoots.push(document.body);
+      searchRoots.push(document.body);
 
       const seen = new Set();
+      const vh = window.innerHeight;
+      const centerY = vh / 2;
+
       for (const root of searchRoots) {
-        root.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b').forEach(el => {
+        root.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b, label').forEach(el => {
           if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2') || el.closest('#noitu-tooltip')) return;
           if (seen.has(el)) return;
           seen.add(el);
 
-          const text = (el.innerText || el.textContent || '').trim();
-          if (!isValidTwoSyllable(text) || el.offsetParent === null) return;
-          if (text.length > 40 || /[0-9@#$%^&*()_+=\[\]{}|\\;:'",.<>?/]/.test(text)) return;
+          let text = (el.innerText || el.textContent || '').trim();
+          if (!text || text.length > 45) return;
+
+          text = text.replace(/\s+/g, ' ').trim();
+          if (!isValidTwoSyllable(text)) return;
+          if (el.offsetParent === null) return;
+          if (/[0-9@#$%^&*()_+=\[\]{}|\\;:'",.<>?/]/.test(text)) return;
 
           const style = window.getComputedStyle(el);
           const fontSize = parseFloat(style.fontSize) || 0;
           const rect = el.getBoundingClientRect();
 
-          const minFont = isMobile ? 13 : 16;
-          const topBound = isMobile ? 30 : 50;
-          const bottomBound = isMobile ? 80 : 120;
-          if (fontSize < minFont || rect.top < topBound || rect.top > window.innerHeight - bottomBound) return;
-          if (rect.width < 40 || rect.height < 18) return;
+          const minFont = isMobile ? 11 : 15;
+          const topBound = isMobile ? 18 : 45;
+          const bottomBound = isMobile ? 65 : 110;
 
-          let score = fontSize * 3;
-          if (style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 600) score += 35;
+          if (fontSize < minFont) return;
+          if (rect.top < topBound || rect.top > vh - bottomBound) return;
+          if (rect.width < 28 || rect.height < 13) return;
+          if (rect.bottom < 0 || rect.top > vh) return;
 
-          const centerY = window.innerHeight / 2;
-          score += Math.max(0, 50 - Math.abs(rect.top + rect.height / 2 - centerY) / 6);
+          let score = fontSize * 4.2;
+
+          if (style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 600) score += 45;
+
+          const elCenterY = rect.top + rect.height / 2;
+          score += Math.max(0, 65 - Math.abs(elCenterY - centerY) / 4.5);
 
           if (input) {
             const inputRect = input.getBoundingClientRect();
-            const dist = Math.abs(rect.bottom - inputRect.top) + Math.abs(rect.left - inputRect.left) / 3;
-            score += Math.max(0, 80 - dist / 4);
+            const distY = Math.abs(rect.bottom - inputRect.top);
+            const distX = Math.abs((rect.left + rect.right) / 2 - (inputRect.left + inputRect.right) / 2);
+            score += Math.max(0, 110 - (distY * 0.65 + distX * 0.25));
           }
 
           const cls = (el.className || '').toString().toLowerCase();
-          if (/word|current|question|prompt|challenge|target|display/.test(cls)) score += 40;
+          if (/word|current|question|prompt|challenge|target|display|text|title/.test(cls)) {
+            score += 55;
+          }
 
-          candidates.push({ text, score, fontSize, el });
+          if (isMobile && rect.top < centerY) score += 30;
+          if (fontSize >= 17) score += 18;
+          if (fontSize >= 20) score += 22;
+          if (fontSize >= 24) score += 25;
+
+          candidates.push({ text, score, fontSize });
         });
       }
 
@@ -715,7 +731,7 @@
     function performSubmit(full, el) {
       lastAttemptedWord = full;
       justSubmittedByMe = true;
-      usedWords.add(full);          // vẫn ghi nhận (nhưng không ảnh hưởng gợi ý)
+      usedWords.add(full);
       allSeenWords.add(full);
 
       actionInFlight = true;
@@ -731,7 +747,6 @@
 
       clearTimeout(checkAcceptTimer);
 
-      // Retry nhanh (~1.6s)
       checkAcceptTimer = setTimeout(() => {
         if (!lastAttemptedWord) {
           actionInFlight = false;
@@ -1049,7 +1064,7 @@
 
     tick();
     if (!window.__noituTickInterval) {
-      window.__noituTickInterval = setInterval(tick, 700);
+      window.__noituTickInterval = setInterval(tick, isMobile ? 550 : 700);
     }
 
     if (!window.__noituObserver) {
