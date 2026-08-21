@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Nối Từ Helper (noitu.fun)
 // @namespace    http://tampermonkey.net/
-// @version      1.30
-// @description  Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + ẩn từ lỗi + tự bỏ từ lỗi + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua đúng 1 lần + ghi từ mới từ đối thủ + 2 bảng riêng + khóa chống trùng + hiện số từ chính xác + fix bàn phím Quetta/Android + tối ưu mobile + nhận diện chữ mobile mạnh + retry nhanh + KHÔNG loại bỏ từ đã dùng
+// @version      1.31
+// @description  Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn + ẩn từ lỗi + retry nhanh + KHÔNG loại từ đã dùng + nhận diện mobile bằng khung kéo thả
 // @author       You
 // @match        https://www.noitu.fun/*
 // @match        https://noitu.fun/*
@@ -15,8 +15,10 @@
 
   const HELPER_ID = 'noitu-helper';
   const HELPER2_ID = 'noitu-helper-2';
+  const SELECT_BOX_ID = 'noitu-select-box';
   const POS_KEY = 'noitu_helper_pos';
   const POS_KEY2 = 'noitu_helper_pos2';
+  const SELECT_POS_KEY = 'noitu_select_box_pos';
   const AUTO_KEY = 'noitu_helper_auto';
   const BAD_KEY = 'noitu_helper_bad_words';
   const NEW_KEY = 'noitu_helper_new_words';
@@ -35,6 +37,10 @@
   function savePosition(left, top) { saveJSON(POS_KEY, { left, top }); }
   function loadPosition2() { return loadJSON(POS_KEY2); }
   function savePosition2(left, top) { saveJSON(POS_KEY2, { left, top }); }
+  function loadSelectPos() { return loadJSON(SELECT_POS_KEY); }
+  function saveSelectPos(left, top, width, height) {
+    saveJSON(SELECT_POS_KEY, { left, top, width, height });
+  }
   function loadAuto() {
     try { return localStorage.getItem(AUTO_KEY) === '1'; } catch (e) { return false; }
   }
@@ -63,11 +69,14 @@
   }
 
   function createHelper() {
-    if (document.getElementById(HELPER_ID) && document.getElementById(HELPER2_ID)) return;
+    if (document.getElementById(HELPER_ID)) return;
+
     const existing1 = document.getElementById(HELPER_ID);
     const existing2 = document.getElementById(HELPER2_ID);
+    const existingBox = document.getElementById(SELECT_BOX_ID);
     if (existing1) existing1.remove();
     if (existing2) existing2.remove();
+    if (existingBox) existingBox.remove();
 
     const isMobile = window.matchMedia('(max-width: 640px)').matches || ('ontouchstart' in window && window.innerWidth < 900);
     const savedPos = loadPosition();
@@ -132,6 +141,91 @@
       panel.style.bottom = 'auto';
     }
     document.body.appendChild(panel);
+
+    // ============ KHUNG CHỌN CHỮ (CHỈ MOBILE) ============
+    let selectBox = null;
+    if (isMobile) {
+      selectBox = document.createElement('div');
+      selectBox.id = SELECT_BOX_ID;
+      selectBox.innerHTML = `
+        <div style="position:absolute;top:-18px;left:0;right:0;text-align:center;font-size:11px;font-weight:600;color:#dc2626;pointer-events:none;white-space:nowrap;">
+          Kéo khung vào chữ
+        </div>
+      `;
+      Object.assign(selectBox.style, {
+        position: 'fixed',
+        border: '2.5px dashed #ef4444',
+        background: 'rgba(239, 68, 68, 0.12)',
+        borderRadius: '10px',
+        zIndex: '999997',
+        boxSizing: 'border-box',
+        touchAction: 'none',
+        pointerEvents: 'auto'
+      });
+
+      const savedSelect = loadSelectPos();
+      if (savedSelect && savedSelect.left && savedSelect.top) {
+        selectBox.style.left = savedSelect.left;
+        selectBox.style.top = savedSelect.top;
+        selectBox.style.width = savedSelect.width || '160px';
+        selectBox.style.height = savedSelect.height || '48px';
+      } else {
+        // Vị trí mặc định gần giữa trên
+        selectBox.style.left = '50%';
+        selectBox.style.top = '22%';
+        selectBox.style.width = '170px';
+        selectBox.style.height = '50px';
+        selectBox.style.transform = 'translateX(-50%)';
+      }
+      document.body.appendChild(selectBox);
+
+      // Kéo khung
+      let draggingBox = false, ox = 0, oy = 0;
+      function startBoxDrag(x, y) {
+        const rect = selectBox.getBoundingClientRect();
+        ox = x - rect.left;
+        oy = y - rect.top;
+        selectBox.style.transform = '';
+        selectBox.style.left = rect.left + 'px';
+        selectBox.style.top = rect.top + 'px';
+        draggingBox = true;
+      }
+      function moveBox(x, y) {
+        if (!draggingBox) return;
+        const w = selectBox.offsetWidth;
+        const h = selectBox.offsetHeight;
+        let left = Math.max(4, Math.min(window.innerWidth - w - 4, x - ox));
+        let top = Math.max(4, Math.min(window.innerHeight - h - 4, y - oy));
+        selectBox.style.left = left + 'px';
+        selectBox.style.top = top + 'px';
+        saveSelectPos(selectBox.style.left, selectBox.style.top, selectBox.style.width, selectBox.style.height);
+      }
+      function endBoxDrag() {
+        draggingBox = false;
+      }
+
+      selectBox.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) {
+          startBoxDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: true });
+      selectBox.addEventListener('touchmove', e => {
+        if (!draggingBox) return;
+        moveBox(e.touches[0].clientX, e.touches[0].clientY);
+        e.preventDefault();
+      }, { passive: false });
+      selectBox.addEventListener('touchend', endBoxDrag);
+      selectBox.addEventListener('touchcancel', endBoxDrag);
+
+      // Hỗ trợ chuột (khi test trên desktop)
+      selectBox.addEventListener('mousedown', e => {
+        startBoxDrag(e.clientX, e.clientY);
+      });
+      document.addEventListener('mousemove', e => {
+        if (draggingBox) moveBox(e.clientX, e.clientY);
+      });
+      document.addEventListener('mouseup', endBoxDrag);
+    }
 
     // ============ BẢNG 2 chỉ hiện trên desktop ============
     if (!isMobile) {
@@ -474,7 +568,6 @@
       return contCount.get(lastSyllable(word)) || 0;
     }
 
-    // Chỉ loại từ lỗi, KHÔNG loại từ đã dùng
     function isDeadEndWord(word) {
       const ns = lastSyllable(word);
       const opts = byFirst.get(ns) || [];
@@ -501,8 +594,56 @@
       return /^[a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+ [a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+$/i.test(text);
     }
 
-    // ====================== TỐI ƯU NHẬN DIỆN CHỮ (MOBILE MẠNH) ======================
+    // ====================== NHẬN DIỆN CHỮ ======================
+    // Ưu tiên đọc chữ NẰM TRONG khung chọn (mobile)
     function findCurrentWord() {
+      // 1. Nếu có khung chọn → chỉ tìm chữ nằm trong khung
+      if (isMobile && selectBox) {
+        const boxRect = selectBox.getBoundingClientRect();
+        const candidates = [];
+
+        document.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b, label').forEach(el => {
+          if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2') || el.closest('#noitu-tooltip') || el.closest('#' + SELECT_BOX_ID)) return;
+
+          let text = (el.innerText || el.textContent || '').trim();
+          if (!text || text.length > 45) return;
+          text = text.replace(/\s+/g, ' ').trim();
+          if (!isValidTwoSyllable(text)) return;
+          if (el.offsetParent === null) return;
+          if (/[0-9@#$%^&*()_+=\[\]{}|\\;:'",.<>?/]/.test(text)) return;
+
+          const rect = el.getBoundingClientRect();
+          // Tính phần giao nhau
+          const overlapLeft = Math.max(boxRect.left, rect.left);
+          const overlapRight = Math.min(boxRect.right, rect.right);
+          const overlapTop = Math.max(boxRect.top, rect.top);
+          const overlapBottom = Math.min(boxRect.bottom, rect.bottom);
+
+          if (overlapRight <= overlapLeft || overlapBottom <= overlapTop) return;
+
+          const overlapArea = (overlapRight - overlapLeft) * (overlapBottom - overlapTop);
+          const elArea = rect.width * rect.height;
+          const overlapRatio = overlapArea / elArea;
+
+          // Chỉ lấy nếu giao nhau đủ nhiều (≥ 40%)
+          if (overlapRatio < 0.4) return;
+
+          const style = window.getComputedStyle(el);
+          const fontSize = parseFloat(style.fontSize) || 14;
+          let score = fontSize * 3 + overlapRatio * 80;
+
+          if (style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 600) score += 30;
+
+          candidates.push({ text, score, fontSize });
+        });
+
+        if (candidates.length) {
+          candidates.sort((a, b) => b.score - a.score || b.fontSize - a.fontSize);
+          return candidates[0].text;
+        }
+      }
+
+      // 2. Fallback: cách cũ (dành cho desktop hoặc khi khung chưa trúng)
       const candidates = [];
       const input = document.querySelector(
         'input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]'
@@ -524,13 +665,12 @@
 
       for (const root of searchRoots) {
         root.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b, label').forEach(el => {
-          if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2') || el.closest('#noitu-tooltip')) return;
+          if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2') || el.closest('#noitu-tooltip') || el.closest('#' + SELECT_BOX_ID)) return;
           if (seen.has(el)) return;
           seen.add(el);
 
           let text = (el.innerText || el.textContent || '').trim();
           if (!text || text.length > 45) return;
-
           text = text.replace(/\s+/g, ' ').trim();
           if (!isValidTwoSyllable(text)) return;
           if (el.offsetParent === null) return;
@@ -547,10 +687,8 @@
           if (fontSize < minFont) return;
           if (rect.top < topBound || rect.top > vh - bottomBound) return;
           if (rect.width < 28 || rect.height < 13) return;
-          if (rect.bottom < 0 || rect.top > vh) return;
 
           let score = fontSize * 4.2;
-
           if (style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 600) score += 45;
 
           const elCenterY = rect.top + rect.height / 2;
@@ -564,14 +702,11 @@
           }
 
           const cls = (el.className || '').toString().toLowerCase();
-          if (/word|current|question|prompt|challenge|target|display|text|title/.test(cls)) {
-            score += 55;
-          }
+          if (/word|current|question|prompt|challenge|target|display|text|title/.test(cls)) score += 55;
 
           if (isMobile && rect.top < centerY) score += 30;
           if (fontSize >= 17) score += 18;
           if (fontSize >= 20) score += 22;
-          if (fontSize >= 24) score += 25;
 
           candidates.push({ text, score, fontSize });
         });
@@ -595,7 +730,7 @@
       return `<div class="sugg" data-full="${full}" data-kind="${kind}"
         style="display:inline-flex;align-items:center;padding:${isMobile ? '6px 10px' : '5px 11px'};
                background:${s.bg};border:1.5px solid ${s.border};border-radius:999px;
-               cursor:pointer;font-size:${isMobile ? '13px' : '13px'};
+               cursor:pointer;font-size:13px;
                font-weight:${kind === 'trap' ? '700' : '500'};color:${s.color};
                white-space:nowrap;">
         <span class="sugg-text">${mark}${second}</span>
@@ -724,7 +859,6 @@
         return t && /không tồn tại|không hợp lệ|không có trong|sai|lỗi|invalid|not found|từ không/.test(t) && t.length < 90;
       });
       if (errEl) return true;
-
       return false;
     }
 
@@ -752,7 +886,6 @@
           actionInFlight = false;
           return;
         }
-
         if (detectSubmitFailed(lastAttemptedWord)) {
           setTimeout(() => {
             if (!lastAttemptedWord) return;
@@ -840,7 +973,7 @@
       const curNorm = normWord(word);
       const allForKey = byFirst.get(key) || [];
 
-      // CHỈ loại từ lỗi + từ hiện tại. KHÔNG loại từ đã dùng
+      // Chỉ loại từ lỗi + từ hiện tại
       const available = allForKey.filter(w =>
         w !== curNorm &&
         !badWords.has(w)
@@ -854,15 +987,10 @@
 
       const traps = [], deads = [], risks = [], oks = [];
       available.forEach(full => {
-        if (trapSet.has(full)) {
-          traps.push(full);
-        } else if (isDeadEndWord(full)) {
-          deads.push(full);
-        } else if (isRiskyTrap(full)) {
-          risks.push(full);
-        } else {
-          oks.push(full);
-        }
+        if (trapSet.has(full)) traps.push(full);
+        else if (isDeadEndWord(full)) deads.push(full);
+        else if (isRiskyTrap(full)) risks.push(full);
+        else oks.push(full);
       });
 
       const byCont = (a, b) => contCountOf(a) - contCountOf(b);
@@ -930,7 +1058,7 @@
       if (autoEnabled) tryAutoPlay();
     }
 
-    // ===== FIX BÀN PHÍM CHO QUETTA / ANDROID =====
+    // ===== FIX BÀN PHÍM QUETTA / ANDROID =====
     function fillEditable(el, text) {
       try {
         el.setAttribute('readonly', 'readonly');
@@ -1017,7 +1145,7 @@
       }
     }
 
-    // ===== Kéo thả =====
+    // ===== Kéo thả bảng gợi ý =====
     function attachDrag(panelEl, headerEl, savePosFn, excludeSelectors) {
       let dragging = false, ox = 0, oy = 0;
       function start(x, y, target) {
@@ -1064,13 +1192,11 @@
 
     tick();
     if (!window.__noituTickInterval) {
-      window.__noituTickInterval = setInterval(tick, isMobile ? 550 : 700);
+      window.__noituTickInterval = setInterval(tick, isMobile ? 500 : 700);
     }
 
     if (!window.__noituObserver) {
-      const observer = new MutationObserver(() => {
-        tick();
-      });
+      const observer = new MutationObserver(() => tick());
       observer.observe(document.body, {
         childList: true,
         subtree: true,
