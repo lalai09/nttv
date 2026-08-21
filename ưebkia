@@ -1,27 +1,24 @@
 // ==UserScript==
-// @name         Nối Từ Helper (vuanoitu.fun) - Bản tạm
-// @namespace    http://tampermonkey.net/
-// @version      1.28-vuanoitu-temp
-// @description  Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + ẩn từ đã dùng + tự bỏ từ lỗi + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua đúng 1 lần + ghi từ mới từ đối thủ + 2 bảng riêng + khóa chống trùng + hiện số từ chính xác + tối ưu mobile - Bản tạm cho vuanoitu.fun
-// @author       You
-// @match        https://vuanoitu.fun/*
-// @match        https://www.vuanoitu.fun/*
-// @grant        none
-// @run-at       document-idle
+// @name Nối Từ Helper (noitu.fun)
+// @namespace http://tampermonkey.net/
+// @version 1.25
+// @description Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + ẩn từ đã dùng + tự bỏ từ lỗi + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua đúng 1 lần + ghi từ mới từ đối thủ + 2 bảng riêng + khóa chống trùng + hiện số từ chính xác
+// @author You
+// @match https://www.noitu.fun/*
+// @match https://noitu.fun/*
+// @grant none
+// @run-at document-idle
 // ==/UserScript==
-
 (function () {
   'use strict';
-
   const HELPER_ID = 'noitu-helper';
   const HELPER2_ID = 'noitu-helper-2';
-  const POS_KEY = 'vuanoitu_helper_pos';
-  const POS_KEY2 = 'vuanoitu_helper_pos2';
-  const AUTO_KEY = 'vuanoitu_helper_auto';
-  const BAD_KEY = 'vuanoitu_helper_bad_words';
-  const NEW_KEY = 'vuanoitu_helper_new_words';
-  const COLLAPSE2_KEY = 'vuanoitu_helper_collapse2';
-
+  const POS_KEY = 'noitu_helper_pos';
+  const POS_KEY2 = 'noitu_helper_pos2';
+  const AUTO_KEY = 'noitu_helper_auto';
+  const BAD_KEY = 'noitu_helper_bad_words';
+  const NEW_KEY = 'noitu_helper_new_words';
+  const COLLAPSE2_KEY = 'noitu_helper_collapse2';
   function loadJSON(key) {
     try {
       const raw = localStorage.getItem(key);
@@ -61,14 +58,12 @@
   function saveCollapse2(on) {
     try { localStorage.setItem(COLLAPSE2_KEY, on ? '1' : '0'); } catch (e) {}
   }
-
   function createHelper() {
     if (document.getElementById(HELPER_ID) && document.getElementById(HELPER2_ID)) return;
     const existing1 = document.getElementById(HELPER_ID);
     const existing2 = document.getElementById(HELPER2_ID);
     if (existing1) existing1.remove();
     if (existing2) existing2.remove();
-
     const isMobile = window.matchMedia('(max-width: 640px)').matches || ('ontouchstart' in window && window.innerWidth < 900);
     const savedPos = loadPosition();
     const savedPos2 = loadPosition2();
@@ -77,42 +72,39 @@
     const allSeenWords = new Set();
     const badWords = loadBadWords();
     const newWords = loadNewWords();
-
     // ============ BẢNG 1: GỢI Ý ============
     const panel = document.createElement('div');
     panel.id = HELPER_ID;
-    const toggleSize = isMobile ? '22px' : '28px';
-    const toggleFont = isMobile ? '13px' : '15px';
     panel.innerHTML = `
-      <div id="noitu-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;cursor:grab;gap:4px;">
-        <div style="font-weight:700;font-size:${isMobile ? '14px' : '15px'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🧠 Gợi ý <span id="noitu-word-count" style="font-weight:500;font-size:11px;color:#059669;margin-left:4px;"></span></div>
-        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-          <button id="noitu-auto" style="border:none;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;cursor:pointer;">Tự chọn</button>
-          <button id="noitu-clear" style="display:none;border:none;background:#fef2f2;color:#b91c1c;border-radius:8px;padding:3px 7px;font-size:11px;font-weight:600;cursor:pointer;">Xóa</button>
-          <div id="noitu-status" style="font-size:10px;color:#10b981;white-space:nowrap;"></div>
-          <button id="noitu-toggle" style="border:none;background:#ecfdf5;color:#065f46;border-radius:8px;width:${toggleSize};height:${toggleSize};font-size:${toggleFont};font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</button>
+      <div id="noitu-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:grab;">
+        <div style="font-weight:700;font-size:15px;">🧠 Gợi ý Nối Từ <span id="noitu-word-count" style="font-weight:500;font-size:12px;color:#059669;margin-left:6px;"></span></div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <button id="noitu-auto" style="border:none;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;">Tự chọn</button>
+          <button id="noitu-clear" title="Xóa lịch sử từ đã dùng trong phiên" style="border:none;background:#fef2f2;color:#b91c1c;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:600;cursor:pointer;">Xóa</button>
+          <div id="noitu-status" style="font-size:11px;color:#10b981;">Sẵn sàng</div>
+          <button id="noitu-toggle" style="border:none;background:#ecfdf5;color:#065f46;border-radius:8px;width:28px;height:28px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</button>
         </div>
       </div>
       <div id="noitu-body">
-        <div id="noitu-current" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);padding:8px 10px;border-radius:10px;margin-bottom:10px;font-size:15px;font-weight:600;text-align:center;border:1px solid #6ee7b7;color:#065f46;">Đang tìm từ...</div>
-        <div id="noitu-result" style="display:flex;flex-wrap:wrap;gap:6px;max-height:${isMobile ? '28vh' : '360px'};overflow-y:auto;padding:2px;-webkit-overflow-scrolling:touch;"></div>
-        <div style="margin-top:8px;font-size:10px;color:#6b7280;text-align:center;">Chạm chữ → tự dán + gửi</div>
+        <div id="noitu-current" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:16px;font-weight:600;text-align:center;border:1px solid #6ee7b7;color:#065f46;">Đang tìm từ...</div>
+        <div id="noitu-result" style="display:flex;flex-wrap:wrap;gap:8px;max-height:${isMobile ? '32vh' : '360px'};overflow-y:auto;padding:2px;-webkit-overflow-scrolling:touch;"></div>
+        <div style="margin-top:10px;font-size:11px;color:#6b7280;text-align:center;">Chạm chữ → tự dán + gửi · Hover xem chữ nối tiếp</div>
       </div>
     `;
     Object.assign(panel.style, {
       position: 'fixed',
       background: '#ffffff',
       border: '2px solid #10b981',
-      borderRadius: '14px',
-      padding: isMobile ? '10px 12px' : '16px',
+      borderRadius: '16px',
+      padding: isMobile ? '12px 14px' : '16px',
       zIndex: '999999',
       boxShadow: '0 12px 40px rgba(16,185,129,0.25)',
       fontFamily: 'system-ui, -apple-system, sans-serif',
       userSelect: 'none',
       touchAction: 'none',
       boxSizing: 'border-box',
-      width: isMobile ? 'min(92vw, 320px)' : '340px',
-      maxWidth: isMobile ? '92vw' : '340px'
+      width: isMobile ? 'auto' : '340px',
+      maxWidth: isMobile ? 'none' : '340px'
     });
     if (savedPos && savedPos.left && savedPos.top) {
       panel.style.left = savedPos.left;
@@ -121,9 +113,8 @@
       panel.style.bottom = 'auto';
     } else if (isMobile) {
       panel.style.bottom = '12px';
-      panel.style.left = '50%';
-      panel.style.transform = 'translateX(-50%)';
-      panel.style.right = 'auto';
+      panel.style.left = '8px';
+      panel.style.right = '8px';
       panel.style.top = 'auto';
     } else {
       panel.style.top = '90px';
@@ -132,66 +123,67 @@
       panel.style.bottom = 'auto';
     }
     document.body.appendChild(panel);
-
-    // ============ BẢNG 2 chỉ hiện trên desktop ============
-    if (!isMobile) {
-      const panel2 = document.createElement('div');
-      panel2.id = HELPER2_ID;
-      let collapsed2 = loadCollapse2();
-      panel2.innerHTML = `
-        <div id="noitu-header2" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${collapsed2 ? '0' : '10px'};cursor:grab;">
-          <div style="font-weight:700;font-size:14px;">🗂️ Từ lỗi &amp; Từ mới</div>
-          <button id="noitu-toggle2" style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:8px;width:26px;height:26px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">${collapsed2 ? '+' : '−'}</button>
-        </div>
-        <div id="noitu-body2" style="display:${collapsed2 ? 'none' : 'block'};">
-          <div id="noitu-bad-box">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <div style="font-size:12px;font-weight:700;color:#6b7280;">🚫 Từ không dùng được <span id="noitu-bad-count">(0)</span></div>
-              <button id="noitu-clear-bad" style="border:none;background:#fef2f2;color:#b91c1c;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Xóa hết</button>
-            </div>
-            <div id="noitu-bad-list" style="display:flex;flex-wrap:wrap;gap:5px;max-height:120px;overflow-y:auto;font-size:12px;"></div>
+    // ============ BẢNG 2 ============
+    const panel2 = document.createElement('div');
+    panel2.id = HELPER2_ID;
+    let collapsed2 = loadCollapse2();
+    panel2.innerHTML = `
+      <div id="noitu-header2" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${collapsed2 ? '0' : '10px'};cursor:grab;">
+        <div style="font-weight:700;font-size:14px;">🗂️ Từ lỗi &amp; Từ mới</div>
+        <button id="noitu-toggle2" style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:8px;width:26px;height:26px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">${collapsed2 ? '+' : '−'}</button>
+      </div>
+      <div id="noitu-body2" style="display:${collapsed2 ? 'none' : 'block'};">
+        <div id="noitu-bad-box">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-size:12px;font-weight:700;color:#6b7280;">🚫 Từ không dùng được <span id="noitu-bad-count">(0)</span></div>
+            <button id="noitu-clear-bad" style="border:none;background:#fef2f2;color:#b91c1c;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Xóa hết</button>
           </div>
-          <div id="noitu-new-box" style="margin-top:14px;border-top:1px dashed #d1d5db;padding-top:10px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <div style="font-size:12px;font-weight:700;color:#6b7280;">🆕 Từ mới từ đối thủ <span id="noitu-new-count">(0)</span></div>
-              <div style="display:flex;gap:4px;">
-                <button id="noitu-copy-new" style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
-                <button id="noitu-clear-new" style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Xóa hết</button>
-              </div>
-            </div>
-            <div id="noitu-new-list" style="display:flex;flex-wrap:wrap;gap:5px;max-height:120px;overflow-y:auto;font-size:12px;"></div>
-          </div>
+          <div id="noitu-bad-list" style="display:flex;flex-wrap:wrap;gap:5px;max-height:120px;overflow-y:auto;font-size:12px;"></div>
         </div>
-      `;
-      Object.assign(panel2.style, {
-        position: 'fixed',
-        background: '#ffffff',
-        border: '2px solid #3b82f6',
-        borderRadius: '16px',
-        padding: '16px',
-        zIndex: '999998',
-        boxShadow: '0 12px 40px rgba(59,130,246,0.22)',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        userSelect: 'none',
-        touchAction: 'none',
-        boxSizing: 'border-box',
-        width: '300px',
-        maxWidth: '300px'
-      });
-      if (savedPos2 && savedPos2.left && savedPos2.top) {
-        panel2.style.left = savedPos2.left;
-        panel2.style.top = savedPos2.top;
-        panel2.style.right = 'auto';
-        panel2.style.bottom = 'auto';
-      } else {
-        panel2.style.top = '90px';
-        panel2.style.right = '380px';
-        panel2.style.left = 'auto';
-        panel2.style.bottom = 'auto';
-      }
-      document.body.appendChild(panel2);
+        <div id="noitu-new-box" style="margin-top:14px;border-top:1px dashed #d1d5db;padding-top:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-size:12px;font-weight:700;color:#6b7280;">🆕 Từ mới từ đối thủ <span id="noitu-new-count">(0)</span></div>
+            <div style="display:flex;gap:4px;">
+              <button id="noitu-copy-new" style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
+              <button id="noitu-clear-new" style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;">Xóa hết</button>
+            </div>
+          </div>
+          <div id="noitu-new-list" style="display:flex;flex-wrap:wrap;gap:5px;max-height:120px;overflow-y:auto;font-size:12px;"></div>
+        </div>
+      </div>
+    `;
+    Object.assign(panel2.style, {
+      position: 'fixed',
+      background: '#ffffff',
+      border: '2px solid #3b82f6',
+      borderRadius: '16px',
+      padding: isMobile ? '12px 14px' : '16px',
+      zIndex: '999998',
+      boxShadow: '0 12px 40px rgba(59,130,246,0.22)',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      userSelect: 'none',
+      touchAction: 'none',
+      boxSizing: 'border-box',
+      width: isMobile ? 'auto' : '300px',
+      maxWidth: isMobile ? 'none' : '300px'
+    });
+    if (savedPos2 && savedPos2.left && savedPos2.top) {
+      panel2.style.left = savedPos2.left;
+      panel2.style.top = savedPos2.top;
+      panel2.style.right = 'auto';
+      panel2.style.bottom = 'auto';
+    } else if (isMobile) {
+      panel2.style.bottom = '12px';
+      panel2.style.right = '8px';
+      panel2.style.left = 'auto';
+      panel2.style.top = 'auto';
+    } else {
+      panel2.style.top = '90px';
+      panel2.style.right = '380px';
+      panel2.style.left = 'auto';
+      panel2.style.bottom = 'auto';
     }
-
+    document.body.appendChild(panel2);
     // ---- refs ----
     const currentEl = document.getElementById('noitu-current');
     const resultEl = document.getElementById('noitu-result');
@@ -212,111 +204,94 @@
     const newCountEl = document.getElementById('noitu-new-count');
     const clearNewBtn = document.getElementById('noitu-clear-new');
     const copyNewBtn = document.getElementById('noitu-copy-new');
-
     function updateAutoBtn() {
       if (autoEnabled) {
         autoBtn.style.background = '#059669';
         autoBtn.style.color = 'white';
         autoBtn.textContent = 'Tự chọn: Bật';
-        if (clearBtn) clearBtn.style.display = 'inline-block';
       } else {
         autoBtn.style.background = '#f3f4f6';
         autoBtn.style.color = '#374151';
         autoBtn.textContent = 'Tự chọn';
-        if (clearBtn) clearBtn.style.display = 'none';
       }
     }
     updateAutoBtn();
-
     autoBtn.addEventListener('click', e => {
       e.stopPropagation();
       autoEnabled = !autoEnabled;
       saveAuto(autoEnabled);
       updateAutoBtn();
-      if (!autoEnabled) {
-        usedWords.clear();
+      if (autoEnabled && lastWord) {
+        tryAutoPlay();
+      } else if (!autoEnabled) {
         clearTimeout(autoTimer);
         clearTimeout(checkAcceptTimer);
         clearTimeout(escTimer);
         actionInFlight = false;
-      } else if (lastWord) {
-        tryAutoPlay();
       }
     });
-
-    if (clearBtn) {
-      clearBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        usedWords.clear();
-        clearTimeout(autoTimer);
-        clearTimeout(checkAcceptTimer);
-        clearTimeout(escTimer);
-        actionInFlight = false;
-        lastEscWord = null;
-        lastEscTime = 0;
-        statusEl.textContent = 'Đã xóa';
-        statusEl.style.color = '#d97706';
-        setTimeout(() => {
-          if (isReady) {
-            statusEl.textContent = `Sẵn sàng`;
-            statusEl.style.color = '#10b981';
-          }
-        }, 1200);
-        if (lastWord) suggest(lastWord);
-      });
-    }
-
-    if (clearBadBtn) {
-      clearBadBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        badWords.clear();
-        saveBadWords(badWords);
-        renderBadList();
-        clearTimeout(autoTimer);
-        clearTimeout(checkAcceptTimer);
-        clearTimeout(escTimer);
-        actionInFlight = false;
-        lastEscWord = null;
-        lastEscTime = 0;
-        if (lastWord) suggest(lastWord);
-        statusEl.textContent = 'Đã xóa từ lỗi';
-        statusEl.style.color = '#d97706';
-        setTimeout(() => {
-          if (isReady) {
-            statusEl.textContent = `Sẵn sàng`;
-            statusEl.style.color = '#10b981';
-          }
-        }, 1500);
-      });
-    }
-
-    if (clearNewBtn) {
-      clearNewBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        newWords.clear();
-        saveNewWords(newWords);
-        renderNewList();
-      });
-    }
-
-    if (copyNewBtn) {
-      copyNewBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        const text = [...newWords].join('\n');
-        if (!text) return;
-        const done = () => {
-          const old = copyNewBtn.textContent;
-          copyNewBtn.textContent = 'Đã copy!';
-          setTimeout(() => { copyNewBtn.textContent = old; }, 1200);
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
-        } else {
-          fallbackCopy(text, done);
+    clearBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      usedWords.clear();
+      allSeenWords.clear();
+      clearTimeout(autoTimer);
+      clearTimeout(checkAcceptTimer);
+      clearTimeout(escTimer);
+      actionInFlight = false;
+      lastEscWord = null;
+      lastEscTime = 0;
+      statusEl.textContent = 'Đã xóa lịch sử phiên';
+      statusEl.style.color = '#d97706';
+      setTimeout(() => {
+        if (isReady) {
+          statusEl.textContent = `Sẵn sàng`;
+          statusEl.style.color = '#10b981';
         }
-      });
-    }
-
+      }, 1500);
+      if (lastWord) suggest(lastWord);
+    });
+    clearBadBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      badWords.clear();
+      saveBadWords(badWords);
+      renderBadList();
+      clearTimeout(autoTimer);
+      clearTimeout(checkAcceptTimer);
+      clearTimeout(escTimer);
+      actionInFlight = false;
+      lastEscWord = null;
+      lastEscTime = 0;
+      if (lastWord) suggest(lastWord);
+      statusEl.textContent = 'Đã xóa danh sách từ lỗi';
+      statusEl.style.color = '#d97706';
+      setTimeout(() => {
+        if (isReady) {
+          statusEl.textContent = `Sẵn sàng`;
+          statusEl.style.color = '#10b981';
+        }
+      }, 1500);
+    });
+    clearNewBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      newWords.clear();
+      saveNewWords(newWords);
+      renderNewList();
+    });
+    copyNewBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const text = [...newWords].join('\n');
+      if (!text) return;
+      const done = () => {
+        const old = copyNewBtn.textContent;
+        copyNewBtn.textContent = 'Đã copy!';
+        setTimeout(() => { copyNewBtn.textContent = old; }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    });
     function fallbackCopy(text, cb) {
       try {
         const ta = document.createElement('textarea');
@@ -331,9 +306,7 @@
         cb();
       } catch (e) {}
     }
-
     function renderBadList() {
-      if (!badCountEl || !badListEl) return;
       badCountEl.textContent = `(${badWords.size})`;
       if (badWords.size === 0) {
         badListEl.innerHTML = '<span style="color:#9ca3af;font-size:11px;">Chưa có từ nào</span>';
@@ -344,9 +317,7 @@
       }).join('');
     }
     renderBadList();
-
     function renderNewList() {
-      if (!newCountEl || !newListEl) return;
       newCountEl.textContent = `(${newWords.size})`;
       if (newWords.size === 0) {
         newListEl.innerHTML = '<span style="color:#9ca3af;font-size:11px;">Chưa có từ nào</span>';
@@ -357,7 +328,6 @@
       }).join('');
     }
     renderNewList();
-
     let collapsed = isMobile;
     function applyCollapsed() {
       bodyEl.style.display = collapsed ? 'none' : 'block';
@@ -369,24 +339,19 @@
       collapsed = !collapsed;
       applyCollapsed();
     });
-
-    if (toggle2Btn && body2El && header2El) {
-      let collapsed2 = loadCollapse2();
-      function applyCollapsed2() {
-        body2El.style.display = collapsed2 ? 'none' : 'block';
-        header2El.style.marginBottom = collapsed2 ? '0' : '10px';
-        toggle2Btn.textContent = collapsed2 ? '+' : '−';
-        saveCollapse2(collapsed2);
-      }
-      applyCollapsed2();
-      toggle2Btn.addEventListener('click', e => {
-        e.stopPropagation();
-        collapsed2 = !collapsed2;
-        applyCollapsed2();
-      });
+    function applyCollapsed2() {
+      body2El.style.display = collapsed2 ? 'none' : 'block';
+      header2El.style.marginBottom = collapsed2 ? '0' : '10px';
+      toggle2Btn.textContent = collapsed2 ? '+' : '−';
+      saveCollapse2(collapsed2);
     }
-
-    // ===== Kho từ (giữ nguyên Firebase của bản gốc) =====
+    applyCollapsed2();
+    toggle2Btn.addEventListener('click', e => {
+      e.stopPropagation();
+      collapsed2 = !collapsed2;
+      applyCollapsed2();
+    });
+    // ===== Kho từ =====
     const FIREBASE_DB_URL = "https://khotu-fc3e7-default-rtdb.asia-southeast1.firebasedatabase.app";
     const byFirst = new Map();
     const contCount = new Map();
@@ -404,11 +369,9 @@
     let lastEscWord = null;
     let lastEscTime = 0;
     const ESC_COOLDOWN = 5500;
-
-    statusEl.textContent = 'Đang tải...';
+    statusEl.textContent = 'Đang tải kho từ...';
     statusEl.style.color = '#d97706';
     wordCountEl.textContent = '';
-
     function normWord(w) {
       return (w || '').trim().toLowerCase().replace(/\s+/g, ' ');
     }
@@ -427,7 +390,7 @@
         if (!word) continue;
         const norm = normWord(word);
         const parts = norm.split(' ');
-        if (parts.length !== 2) continue;
+        if (parts.length !== 2) continue; // chỉ lấy từ đúng 2 âm tiết
         validSet.add(norm);
         if (trap) trapSet.add(norm);
         const first = parts[0];
@@ -442,8 +405,8 @@
     }
     function updateWordCountDisplay() {
       if (isReady) {
-        wordCountEl.textContent = `(${totalValidWords.toLocaleString('vi-VN')})`;
-        statusEl.textContent = `Sẵn sàng`;
+        wordCountEl.textContent = `(${totalValidWords.toLocaleString('vi-VN')} từ)`;
+        statusEl.textContent = `Sẵn sàng · ${byFirst.size} âm`;
         statusEl.style.color = '#10b981';
       }
     }
@@ -459,28 +422,25 @@
         })
         .catch(() => {
           isReady = false;
-          statusEl.textContent = 'Lỗi tải';
+          statusEl.textContent = 'Lỗi tải kho từ';
           statusEl.style.color = '#dc2626';
           wordCountEl.textContent = '';
         });
     }
     loadWords();
-    setInterval(loadWords, 15000);
-
+    setInterval(loadWords, 15000); // đồng bộ liên tục mỗi 15 giây
     function contCountOf(word) {
       return contCount.get(lastSyllable(word)) || 0;
     }
     function isDeadEndWord(word) {
       const ns = lastSyllable(word);
       const opts = byFirst.get(ns) || [];
-      const checkUsed = autoEnabled ? usedWords : new Set();
-      return opts.filter(w => w !== word && !checkUsed.has(w) && !allSeenWords.has(w) && !badWords.has(w)).length === 0;
+      return opts.filter(w => w !== word && !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w)).length === 0;
     }
     function isRiskyTrap(word) {
       const ns = lastSyllable(word);
       const opts = byFirst.get(ns) || [];
-      const checkUsed = autoEnabled ? usedWords : new Set();
-      const available = opts.filter(w => !checkUsed.has(w) && !allSeenWords.has(w) && !badWords.has(w));
+      const available = opts.filter(w => !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w));
       if (!available.length) return false;
       if (trapFirst.get(ns)) return true;
       return available.some(w => isDeadEndWord(w));
@@ -494,46 +454,29 @@
       text = text.trim().toLowerCase();
       return /^[a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+ [a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+$/i.test(text);
     }
-
-    // ===== TÌM TỪ HIỆN TẠI (linh hoạt hơn cho vuanoitu.fun) =====
     function findCurrentWord() {
       const candidates = [];
-      // Ưu tiên các selector phổ biến
-      const possibleSelectors = [
-        '[class*="current"]', '[class*="word"]', '[class*="challenge"]',
-        '[class*="prompt"]', '[class*="target"]', '[class*="last"]',
-        'h1', 'h2', 'h3', '.text-2xl', '.text-3xl', '.text-xl',
-        'div', 'span', 'p', 'strong', 'b'
-      ];
-
-      document.querySelectorAll(possibleSelectors.join(',')).forEach(el => {
+      document.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b').forEach(el => {
         if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2')) return;
         const text = (el.innerText || el.textContent || '').trim();
         if (!isValidTwoSyllable(text) || el.offsetParent === null) return;
-
         const style = window.getComputedStyle(el);
         const fontSize = parseFloat(style.fontSize) || 0;
         const rect = el.getBoundingClientRect();
-        const minFontSize = isMobile ? 14 : 18;
-        const topBound = isMobile ? 30 : 50;
-        const bottomBound = isMobile ? 80 : 120;
-
+        const minFontSize = isMobile ? 14 : 20;
+        const topBound = isMobile ? 40 : 60;
+        const bottomBound = isMobile ? 90 : 140;
         if (fontSize < minFontSize || rect.top < topBound || rect.top > window.innerHeight - bottomBound) return;
-
         let score = fontSize * 2;
-        if (style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 600) score += 30;
-        if (el.tagName.match(/H[1-3]/)) score += 20;
+        if (style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 600) score += 25;
         const centerY = window.innerHeight / 2;
-        score += Math.max(0, 50 - Math.abs(rect.top + rect.height / 2 - centerY) / 6);
-
+        score += Math.max(0, 40 - Math.abs(rect.top + rect.height / 2 - centerY) / 8);
         candidates.push({ text, score, fontSize });
       });
-
       if (!candidates.length) return null;
       candidates.sort((a, b) => b.score - a.score || b.fontSize - a.fontSize);
       return candidates[0].text;
     }
-
     function chipHtml(full, kind) {
       const second = full.split(/\s+/)[1];
       const styles = {
@@ -545,26 +488,24 @@
       const s = styles[kind] || styles.ok;
       const mark = s.mark ? `<span style="font-weight:800;margin-right:3px;">${s.mark}</span>` : '';
       return `<div class="sugg" data-full="${full}" data-kind="${kind}"
-        style="display:inline-flex;align-items:center;padding:${isMobile ? '6px 10px' : '5px 11px'};
+        style="display:inline-flex;align-items:center;padding:${isMobile ? '7px 12px' : '5px 11px'};
                background:${s.bg};border:1.5px solid ${s.border};border-radius:999px;
-               cursor:pointer;font-size:${isMobile ? '13px' : '13px'};
+               cursor:pointer;font-size:${isMobile ? '14px' : '13px'};
                font-weight:${kind === 'trap' ? '700' : '500'};color:${s.color};
                white-space:nowrap;">
         <span class="sugg-text">${mark}${second}</span>
       </div>`;
     }
-
     function sectionHtml(title, color, items, kind) {
       if (!items.length) return '';
-      return `<div style="margin-bottom:8px;">
-        <div style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:${color};margin:0 0 5px;display:flex;align-items:center;gap:5px;">
-          <span style="width:5px;height:5px;border-radius:50%;background:${color};display:inline-block;"></span>
+      return `<div style="margin-bottom:10px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:${color};margin:0 0 6px;display:flex;align-items:center;gap:6px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:${color};display:inline-block;"></span>
           ${title} <span style="font-weight:500;opacity:.7;">(${items.length})</span>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:5px;">${items.map(w => chipHtml(w, kind)).join('')}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">${items.map(w => chipHtml(w, kind)).join('')}</div>
       </div>`;
     }
-
     let tooltip = document.getElementById('noitu-tooltip');
     if (!tooltip) {
       tooltip = document.createElement('div');
@@ -577,7 +518,6 @@
       });
       document.body.appendChild(tooltip);
     }
-
     function markAsBad(word) {
       if (!word) return;
       const norm = normWord(word);
@@ -586,7 +526,7 @@
       badWords.add(norm);
       saveBadWords(badWords);
       renderBadList();
-      statusEl.textContent = `Lỗi: ${norm}`;
+      statusEl.textContent = `Đã lưu từ lỗi: ${norm}`;
       statusEl.style.color = '#dc2626';
       setTimeout(() => {
         if (isReady) {
@@ -595,7 +535,6 @@
         }
       }, 2000);
     }
-
     function markAsNewFromOpponent(word) {
       if (!word) return;
       const norm = normWord(word);
@@ -608,23 +547,22 @@
       saveNewWords(newWords);
       renderNewList();
     }
-
+    // ===== Tự bỏ qua – chỉ 1 lần =====
     function sendEscape() {
-      // Thử tìm nút bỏ qua / skip / pass
-      const skipBtn = Array.from(document.querySelectorAll('button, a, div[role="button"]')).find(b =>
-        /bỏ qua|skip|pass|qua lượt|bỏ/i.test((b.textContent || '').trim())
+      const skipBtn = Array.from(document.querySelectorAll('button')).find(b =>
+        /bỏ qua|skip|pass/i.test((b.textContent || '').trim())
       );
       if (skipBtn) {
         skipBtn.click();
       } else {
-        const input = findInput();
+        const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
         const targets = [input, document].filter(Boolean);
         targets.forEach(target => {
           target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
           target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
         });
       }
-      statusEl.textContent = 'Đã bỏ qua';
+      statusEl.textContent = 'Đã tự bỏ qua';
       statusEl.style.color = '#dc2626';
       setTimeout(() => {
         if (isReady) {
@@ -633,7 +571,6 @@
         }
       }, 2000);
     }
-
     function scheduleEscape() {
       if (!autoEnabled) return;
       if (Date.now() - lastEscTime < ESC_COOLDOWN) return;
@@ -663,27 +600,23 @@
         }, 3500);
       }, delay);
     }
-
     function detectSubmitFailed(attemptedWord) {
       const current = findCurrentWord();
       if (current && normWord(current) === normWord(lastWord)) return true;
-      const input = findInput();
+      const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
       if (input && input.value && normWord(input.value) === normWord(attemptedWord)) return true;
       const errEl = Array.from(document.querySelectorAll('div, span, p')).find(el => {
         if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2')) return false;
         const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-        return t && /không tồn tại|không hợp lệ|không có trong|sai|lỗi|invalid|not found|đã dùng|đã tồn tại/i.test(t) && t.length < 100;
+        return t && /không tồn tại|không hợp lệ|không có trong|sai|lỗi|invalid|not found/.test(t) && t.length < 80;
       });
       if (errEl) return true;
       return false;
     }
-
-    function performSubmit(full, el) {
+    function performSubmit(full, el, fromAuto = false) {
       lastAttemptedWord = full;
       justSubmittedByMe = true;
-      if (autoEnabled) {
-        usedWords.add(full);
-      }
+      usedWords.add(full);
       actionInFlight = true;
       autoPasteAndSubmit(full);
       if (el) {
@@ -693,32 +626,42 @@
         if (textEl) textEl.style.color = 'white';
         setTimeout(() => { el.style.background = oldBg; }, 400);
       }
+
+      // Manual click: chỉ khóa ngắn để tránh double-click, sau đó cho chọn tiếp ngay
+      if (!fromAuto) {
+        setTimeout(() => {
+          actionInFlight = false;
+        }, 650);
+      }
+
       clearTimeout(checkAcceptTimer);
+      const failCheckDelay = fromAuto ? 5000 : 3200; // auto giữ 5s, manual kiểm tra nhanh hơn
+
       checkAcceptTimer = setTimeout(() => {
         if (lastAttemptedWord && detectSubmitFailed(lastAttemptedWord)) {
           setTimeout(() => {
             if (!lastAttemptedWord) return;
             if (detectSubmitFailed(lastAttemptedWord)) {
               markAsBad(lastAttemptedWord);
-              if (autoEnabled) usedWords.delete(lastAttemptedWord);
+              usedWords.delete(lastAttemptedWord);
               justSubmittedByMe = false;
               actionInFlight = false;
               suggest(lastWord);
-              if (autoEnabled) {
+              // Chỉ tự chọn lại khi đang bật auto
+              if (fromAuto && autoEnabled) {
                 setTimeout(() => {
                   if (autoEnabled) tryAutoPlay();
                 }, 600);
               }
             } else {
-              actionInFlight = false;
+              if (fromAuto) actionInFlight = false;
             }
-          }, 1500);
+          }, 1300);
         } else {
-          actionInFlight = false;
+          if (fromAuto) actionInFlight = false;
         }
-      }, 5000);
+      }, failCheckDelay);
     }
-
     function tryAutoPlay() {
       if (!autoEnabled || !isReady) return;
       if (actionInFlight) return;
@@ -758,10 +701,9 @@
       autoTimer = setTimeout(() => {
         if (!autoEnabled) { actionInFlight = false; return; }
         const full = best.dataset.full;
-        performSubmit(full, best);
+        performSubmit(full, best, true); // fromAuto = true
       }, delay);
     }
-
     function suggest(word) {
       if (!word) {
         currentEl.textContent = 'Chưa tìm thấy từ';
@@ -777,8 +719,7 @@
       const key = getLastSyllable(word);
       const curNorm = normWord(word);
       const allForKey = byFirst.get(key) || [];
-      const checkUsed = autoEnabled ? usedWords : new Set();
-      const available = allForKey.filter(w => w !== curNorm && !checkUsed.has(w) && !allSeenWords.has(w) && !badWords.has(w));
+      const available = allForKey.filter(w => w !== curNorm && !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w));
       if (!available.length) {
         resultEl.innerHTML = `<div style="color:#d97706;font-size:13px;padding:6px;">Hết từ · Đang bỏ qua...</div>`;
         if (autoEnabled) scheduleEscape();
@@ -801,48 +742,58 @@
       deads.sort(byCont);
       risks.sort(byCont);
       oks.sort(byCont);
-      const lim = isMobile ? 10 : 20;
+      const lim = isMobile ? 12 : 20;
       resultEl.innerHTML =
         sectionHtml('★ Nên dùng (bẫy)', '#b45309', traps.slice(0, lim), 'trap') +
         sectionHtml('✗ Cụt — hết đường', '#be123c', deads.slice(0, lim), 'dead') +
         sectionHtml('Gợi ý thường', '#166534', oks.slice(0, lim), 'ok') +
         sectionHtml('✗ Không nên dùng', '#d97706', risks.slice(0, lim), 'risk');
-
       resultEl.querySelectorAll('.sugg').forEach(el => {
         el.onmouseenter = () => {
           el.style.filter = 'brightness(0.92)';
           el.style.transform = 'translateY(-1px)';
           const full = el.dataset.full;
           const nextKey = getLastSyllable(full);
-          const checkUsed = autoEnabled ? usedWords : new Set();
-          const nextList = (byFirst.get(nextKey) || []).filter(w => !checkUsed.has(w) && !allSeenWords.has(w) && !badWords.has(w));
+          // Lấy đúng danh sách từ bắt đầu bằng âm tiết cuối của từ đang hover
+          const nextList = (byFirst.get(nextKey) || []).filter(w =>
+            !usedWords.has(w) && !allSeenWords.has(w) && !badWords.has(w)
+          );
           if (!nextList.length) {
             tooltip.innerHTML = `<div style="opacity:.7">Không còn từ nối tiếp sau "<b>${nextKey}</b>"</div>`;
           } else {
-            const nextTraps = [], nextDeads = [], nextOks = [];
+            const nextTraps = [], nextDeads = [], nextRisks = [], nextOks = [];
             nextList.forEach(w => {
               if (trapSet.has(w)) nextTraps.push(w);
               else if (isDeadEndWord(w)) nextDeads.push(w);
+              else if (isRiskyTrap(w)) nextRisks.push(w);
               else nextOks.push(w);
             });
             let html = `<div style="font-weight:700;margin-bottom:6px;color:#6ee7b7">Nối tiếp sau "<b>${nextKey}</b>" (${nextList.length})</div>`;
             if (nextTraps.length) {
               html += `<div style="color:#fbbf24;margin:4px 0 2px">★ Bẫy:</div>`;
-              html += nextTraps.slice(0, 8).map(w => `<div>• ${w.split(' ')[1]}</div>`).join('');
+              html += nextTraps.slice(0, 7).map(w => `<div>• ${w}</div>`).join('');
             }
             if (nextDeads.length) {
               html += `<div style="color:#f87171;margin:4px 0 2px">✗ Cụt:</div>`;
-              html += nextDeads.slice(0, 6).map(w => `<div>• ${w.split(' ')[1]}</div>`).join('');
+              html += nextDeads.slice(0, 5).map(w => `<div>• ${w}</div>`).join('');
+            }
+            if (nextRisks.length) {
+              html += `<div style="color:#fb923c;margin:4px 0 2px">✗ Không nên:</div>`;
+              html += nextRisks.slice(0, 5).map(w => `<div>• ${w}</div>`).join('');
             }
             if (nextOks.length) {
               html += `<div style="color:#86efac;margin:4px 0 2px">Thường:</div>`;
-              html += nextOks.slice(0, 10).map(w => `<div>• ${w.split(' ')[1]}</div>`).join('');
+              html += nextOks.slice(0, 8).map(w => `<div>• ${w}</div>`).join('');
             }
             tooltip.innerHTML = html;
           }
           const rect = el.getBoundingClientRect();
           tooltip.style.display = 'block';
-          tooltip.style.left = Math.min(rect.left, window.innerWidth - 300) + 'px';
+          // Giữ tooltip trong màn hình
+          let left = rect.left;
+          if (left + 290 > window.innerWidth) left = window.innerWidth - 300;
+          if (left < 4) left = 4;
+          tooltip.style.left = left + 'px';
           tooltip.style.top = (rect.bottom + 8) + 'px';
         };
         el.onmouseleave = () => {
@@ -851,92 +802,41 @@
           tooltip.style.display = 'none';
         };
         el.onclick = () => {
-          if (actionInFlight) return;
+          // Chỉ chặn khi đang chạy auto, còn manual thì cho chọn liên tục
+          if (actionInFlight && autoEnabled) return;
           const full = el.dataset.full;
-          performSubmit(full, el);
+          performSubmit(full, el, false); // fromAuto = false → manual
           tooltip.style.display = 'none';
         };
       });
       if (autoEnabled) tryAutoPlay();
     }
-
-    // ===== TÌM INPUT LINH HOẠT =====
-    function findInput() {
-      return document.querySelector(
-        'input[type="text"], input[placeholder*="từ"], input[placeholder*="nhập"], input[placeholder*="gõ"], ' +
-        'input[class*="input"], input[class*="answer"], input[class*="word"], input[class*="text"], ' +
-        'textarea, input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])'
-      );
+    function autoPasteAndSubmit(text) {
+      const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
+      if (!input) return;
+      fillEditable(input, text);
+      input.focus();
+      setTimeout(() => {
+        const btn = document.querySelector('button[class*="submitBtn"], button[class*="submit"]') ||
+                    Array.from(document.querySelectorAll('button')).find(b => b.querySelector('svg'));
+        if (btn) btn.click();
+        else {
+          input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+          input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+        }
+      }, 150);
     }
-
     function fillEditable(el, text) {
       try {
-        el.setAttribute('readonly', 'readonly');
-        el.setAttribute('inputmode', 'none');
-        el.setAttribute('autocomplete', 'off');
-        el.style.caretColor = 'transparent';
-        el.style.pointerEvents = 'none';
-        const proto = el.tagName === 'TEXTAREA'
-          ? HTMLTextAreaElement.prototype
-          : HTMLInputElement.prototype;
+        el.focus();
+        const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
         const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-        if (setter) setter.call(el, text);
-        else el.value = text;
+        if (setter) setter.call(el, text); else el.value = text;
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         return true;
-      } catch (e) {
-        return false;
-      }
+      } catch (e) { return false; }
     }
-
-    function autoPasteAndSubmit(text) {
-      const input = findInput();
-      if (!input) {
-        console.warn('[Nối Từ Helper] Không tìm thấy ô input');
-        return;
-      }
-      fillEditable(input, text);
-      try {
-        input.focus({ preventScroll: true });
-      } catch (e) {}
-      setTimeout(() => {
-        // Thử nhiều cách tìm nút gửi
-        let btn =
-          document.querySelector('button[type="submit"]') ||
-          document.querySelector('button[class*="submit"], button[class*="send"], button[class*="ok"]') ||
-          Array.from(document.querySelectorAll('button')).find(b =>
-            /gửi|submit|ok|xác nhận|gửi từ|enter|gửi đi/i.test((b.textContent || '').trim()) ||
-            b.querySelector('svg')
-          );
-        if (btn) {
-          btn.click();
-        } else {
-          ['keydown', 'keypress', 'keyup'].forEach(type => {
-            input.dispatchEvent(new KeyboardEvent(type, {
-              key: 'Enter',
-              code: 'Enter',
-              keyCode: 13,
-              which: 13,
-              bubbles: true,
-              cancelable: true
-            }));
-          });
-        }
-        input.blur();
-        if (document.activeElement && document.activeElement !== document.body) {
-          document.activeElement.blur();
-        }
-        setTimeout(() => {
-          input.removeAttribute('readonly');
-          input.removeAttribute('inputmode');
-          input.removeAttribute('autocomplete');
-          input.style.caretColor = '';
-          input.style.pointerEvents = '';
-        }, 500);
-      }, 50);
-    }
-
     function tick() {
       const word = findCurrentWord();
       if (word && word !== lastWord) {
@@ -957,7 +857,6 @@
         suggest(word);
       }
     }
-
     // ===== Kéo thả =====
     function attachDrag(panelEl, headerEl, savePosFn, excludeSelectors) {
       let dragging = false, ox = 0, oy = 0;
@@ -970,7 +869,6 @@
         panelEl.style.top = rect.top + 'px';
         panelEl.style.right = 'auto';
         panelEl.style.bottom = 'auto';
-        panelEl.style.transform = '';
         return true;
       }
       function move(x, y) {
@@ -995,32 +893,14 @@
       panelEl.addEventListener('touchend', () => dragging = false);
     }
     attachDrag(panel, headerEl, savePosition, ['.sugg', '#noitu-toggle', '#noitu-auto', '#noitu-clear']);
-    if (!isMobile) {
-      const panel2 = document.getElementById(HELPER2_ID);
-      if (panel2 && header2El) {
-        attachDrag(panel2, header2El, savePosition2, ['#noitu-toggle2', '#noitu-clear-bad', '#noitu-clear-new', '#noitu-copy-new']);
-      }
-    }
-
+    attachDrag(panel2, header2El, savePosition2, ['#noitu-toggle2', '#noitu-clear-bad', '#noitu-clear-new', '#noitu-copy-new']);
     tick();
-    if (!window.__vuanoituTickInterval) window.__vuanoituTickInterval = setInterval(tick, 1100);
+    if (!window.__noituTickInterval) window.__noituTickInterval = setInterval(tick, 1100);
   }
-
   createHelper();
-
-  // Chặn focus mở bàn phím trên mobile
-  document.addEventListener('focusin', function(e) {
-    const el = e.target;
-    if (el.matches && el.matches('input, textarea')) {
-      if (el.hasAttribute('readonly') || el.getAttribute('inputmode') === 'none') {
-        el.blur();
-      }
-    }
-  }, true);
-
-  if (!window.__vuanoituWatchdog) {
-    window.__vuanoituWatchdog = setInterval(() => {
-      if (!document.getElementById(HELPER_ID)) createHelper();
+  if (!window.__noituWatchdog) {
+    window.__noituWatchdog = setInterval(() => {
+      if (!document.getElementById(HELPER_ID) || !document.getElementById(HELPER2_ID)) createHelper();
     }, 1500);
   }
 })();
