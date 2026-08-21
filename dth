@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Nối Từ Helper (noitu.fun)
 // @namespace    http://tampermonkey.net/
-// @version      1.27
-// @description  Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + ẩn từ đã dùng + tự bỏ từ lỗi + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua đúng 1 lần + ghi từ mới từ đối thủ + 2 bảng riêng + khóa chống trùng + hiện số từ chính xác + fix bàn phím Quetta/Android + tối ưu mobile
+// @version      1.29
+// @description  Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + ẩn từ lỗi + tự bỏ từ lỗi + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua đúng 1 lần + ghi từ mới từ đối thủ + 2 bảng riêng + khóa chống trùng + hiện số từ chính xác + fix bàn phím Quetta/Android + tối ưu mobile + nhận diện chữ tốt hơn + retry nhanh khi từ lỗi + KHÔNG loại bỏ từ đã dùng
 // @author       You
 // @match        https://www.noitu.fun/*
 // @match        https://noitu.fun/*
@@ -64,7 +64,6 @@
 
   function createHelper() {
     if (document.getElementById(HELPER_ID) && document.getElementById(HELPER2_ID)) return;
-
     const existing1 = document.getElementById(HELPER_ID);
     const existing2 = document.getElementById(HELPER2_ID);
     if (existing1) existing1.remove();
@@ -74,19 +73,16 @@
     const savedPos = loadPosition();
     const savedPos2 = loadPosition2();
     let autoEnabled = loadAuto();
-    const usedWords = new Set();
-    const allSeenWords = new Set();
+    const usedWords = new Set();          // vẫn giữ để theo dõi (nhưng KHÔNG loại khỏi gợi ý)
+    const allSeenWords = new Set();       // vẫn giữ để theo dõi (nhưng KHÔNG loại khỏi gợi ý)
     const badWords = loadBadWords();
     const newWords = loadNewWords();
 
     // ============ BẢNG 1: GỢI Ý ============
     const panel = document.createElement('div');
     panel.id = HELPER_ID;
-
-    // Nút thu nhỏ nhỏ hơn trên mobile
     const toggleSize = isMobile ? '22px' : '28px';
     const toggleFont = isMobile ? '13px' : '15px';
-
     panel.innerHTML = `
       <div id="noitu-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;cursor:grab;gap:4px;">
         <div style="font-weight:700;font-size:${isMobile ? '14px' : '15px'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🧠 Gợi ý <span id="noitu-word-count" style="font-weight:500;font-size:11px;color:#059669;margin-left:4px;"></span></div>
@@ -103,7 +99,6 @@
         <div style="margin-top:8px;font-size:10px;color:#6b7280;text-align:center;">Chạm chữ → tự dán + gửi</div>
       </div>
     `;
-
     Object.assign(panel.style, {
       position: 'fixed',
       background: '#ffffff',
@@ -116,11 +111,9 @@
       userSelect: 'none',
       touchAction: 'none',
       boxSizing: 'border-box',
-      // Gọn chiều ngang trên mobile
       width: isMobile ? 'min(92vw, 320px)' : '340px',
       maxWidth: isMobile ? '92vw' : '340px'
     });
-
     if (savedPos && savedPos.left && savedPos.top) {
       panel.style.left = savedPos.left;
       panel.style.top = savedPos.top;
@@ -170,7 +163,6 @@
           </div>
         </div>
       `;
-
       Object.assign(panel2.style, {
         position: 'fixed',
         background: '#ffffff',
@@ -186,7 +178,6 @@
         width: '300px',
         maxWidth: '300px'
       });
-
       if (savedPos2 && savedPos2.left && savedPos2.top) {
         panel2.style.left = savedPos2.left;
         panel2.style.top = savedPos2.top;
@@ -211,7 +202,6 @@
     const headerEl = document.getElementById('noitu-header');
     const autoBtn = document.getElementById('noitu-auto');
     const clearBtn = document.getElementById('noitu-clear');
-
     const header2El = document.getElementById('noitu-header2');
     const body2El = document.getElementById('noitu-body2');
     const toggle2Btn = document.getElementById('noitu-toggle2');
@@ -228,13 +218,11 @@
         autoBtn.style.background = '#059669';
         autoBtn.style.color = 'white';
         autoBtn.textContent = 'Tự chọn: Bật';
-        // Hiện nút Xóa khi bật tự chọn
         if (clearBtn) clearBtn.style.display = 'inline-block';
       } else {
         autoBtn.style.background = '#f3f4f6';
         autoBtn.style.color = '#374151';
         autoBtn.textContent = 'Tự chọn';
-        // Ẩn nút Xóa khi tắt tự chọn
         if (clearBtn) clearBtn.style.display = 'none';
       }
     }
@@ -245,7 +233,6 @@
       autoEnabled = !autoEnabled;
       saveAuto(autoEnabled);
       updateAutoBtn();
-
       if (!autoEnabled) {
         usedWords.clear();
         clearTimeout(autoTimer);
@@ -486,50 +473,94 @@
     function contCountOf(word) {
       return contCount.get(lastSyllable(word)) || 0;
     }
+
+    // Chỉ loại từ lỗi, KHÔNG loại từ đã dùng
     function isDeadEndWord(word) {
       const ns = lastSyllable(word);
       const opts = byFirst.get(ns) || [];
-      const checkUsed = autoEnabled ? usedWords : new Set();
-      return opts.filter(w => w !== word && !checkUsed.has(w) && !allSeenWords.has(w) && !badWords.has(w)).length === 0;
+      return opts.filter(w =>
+        w !== word &&
+        !badWords.has(w)
+      ).length === 0;
     }
+
     function isRiskyTrap(word) {
       const ns = lastSyllable(word);
       const opts = byFirst.get(ns) || [];
-      const checkUsed = autoEnabled ? usedWords : new Set();
-      const available = opts.filter(w => !checkUsed.has(w) && !allSeenWords.has(w) && !badWords.has(w));
+      const available = opts.filter(w => !badWords.has(w));
       if (!available.length) return false;
       if (trapFirst.get(ns)) return true;
       return available.some(w => isDeadEndWord(w));
     }
+
     function getLastSyllable(text) {
       if (!text) return '';
       return normWord(text.replace(/[.,!?]/g, '')).split(' ').pop() || '';
     }
+
     function isValidTwoSyllable(text) {
       if (!text) return false;
       text = text.trim().toLowerCase();
       return /^[a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+ [a-záàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ]+$/i.test(text);
     }
 
+    // ====================== TỐI ƯU NHẬN DIỆN CHỮ ======================
     function findCurrentWord() {
       const candidates = [];
-      document.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b').forEach(el => {
-        if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2')) return;
-        const text = (el.innerText || el.textContent || '').trim();
-        if (!isValidTwoSyllable(text) || el.offsetParent === null) return;
-        const style = window.getComputedStyle(el);
-        const fontSize = parseFloat(style.fontSize) || 0;
-        const rect = el.getBoundingClientRect();
-        const minFontSize = isMobile ? 14 : 20;
-        const topBound = isMobile ? 40 : 60;
-        const bottomBound = isMobile ? 90 : 140;
-        if (fontSize < minFontSize || rect.top < topBound || rect.top > window.innerHeight - bottomBound) return;
-        let score = fontSize * 2;
-        if (style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 600) score += 25;
-        const centerY = window.innerHeight / 2;
-        score += Math.max(0, 40 - Math.abs(rect.top + rect.height / 2 - centerY) / 8);
-        candidates.push({ text, score, fontSize });
-      });
+      const input = document.querySelector(
+        'input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]'
+      );
+
+      const searchRoots = [];
+      if (input) {
+        let p = input.parentElement;
+        for (let i = 0; i < 6 && p; i++) {
+          searchRoots.push(p);
+          p = p.parentElement;
+        }
+      }
+      if (!searchRoots.length) searchRoots.push(document.body);
+
+      const seen = new Set();
+      for (const root of searchRoots) {
+        root.querySelectorAll('div, span, p, h1, h2, h3, h4, strong, b').forEach(el => {
+          if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2') || el.closest('#noitu-tooltip')) return;
+          if (seen.has(el)) return;
+          seen.add(el);
+
+          const text = (el.innerText || el.textContent || '').trim();
+          if (!isValidTwoSyllable(text) || el.offsetParent === null) return;
+          if (text.length > 40 || /[0-9@#$%^&*()_+=\[\]{}|\\;:'",.<>?/]/.test(text)) return;
+
+          const style = window.getComputedStyle(el);
+          const fontSize = parseFloat(style.fontSize) || 0;
+          const rect = el.getBoundingClientRect();
+
+          const minFont = isMobile ? 13 : 16;
+          const topBound = isMobile ? 30 : 50;
+          const bottomBound = isMobile ? 80 : 120;
+          if (fontSize < minFont || rect.top < topBound || rect.top > window.innerHeight - bottomBound) return;
+          if (rect.width < 40 || rect.height < 18) return;
+
+          let score = fontSize * 3;
+          if (style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 600) score += 35;
+
+          const centerY = window.innerHeight / 2;
+          score += Math.max(0, 50 - Math.abs(rect.top + rect.height / 2 - centerY) / 6);
+
+          if (input) {
+            const inputRect = input.getBoundingClientRect();
+            const dist = Math.abs(rect.bottom - inputRect.top) + Math.abs(rect.left - inputRect.left) / 3;
+            score += Math.max(0, 80 - dist / 4);
+          }
+
+          const cls = (el.className || '').toString().toLowerCase();
+          if (/word|current|question|prompt|challenge|target|display/.test(cls)) score += 40;
+
+          candidates.push({ text, score, fontSize, el });
+        });
+      }
+
       if (!candidates.length) return null;
       candidates.sort((a, b) => b.score - a.score || b.fontSize - a.fontSize);
       return candidates[0].text;
@@ -594,7 +625,7 @@
           statusEl.textContent = `Sẵn sàng`;
           statusEl.style.color = '#10b981';
         }
-      }, 2000);
+      }, 1800);
     }
 
     function markAsNewFromOpponent(word) {
@@ -667,27 +698,29 @@
     function detectSubmitFailed(attemptedWord) {
       const current = findCurrentWord();
       if (current && normWord(current) === normWord(lastWord)) return true;
+
       const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
       if (input && input.value && normWord(input.value) === normWord(attemptedWord)) return true;
+
       const errEl = Array.from(document.querySelectorAll('div, span, p')).find(el => {
         if (el.closest('#noitu-helper') || el.closest('#noitu-helper-2')) return false;
         const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-        return t && /không tồn tại|không hợp lệ|không có trong|sai|lỗi|invalid|not found/.test(t) && t.length < 80;
+        return t && /không tồn tại|không hợp lệ|không có trong|sai|lỗi|invalid|not found|từ không/.test(t) && t.length < 90;
       });
       if (errEl) return true;
+
       return false;
     }
 
     function performSubmit(full, el) {
       lastAttemptedWord = full;
       justSubmittedByMe = true;
-
-      if (autoEnabled) {
-        usedWords.add(full);
-      }
+      usedWords.add(full);          // vẫn ghi nhận (nhưng không ảnh hưởng gợi ý)
+      allSeenWords.add(full);
 
       actionInFlight = true;
       autoPasteAndSubmit(full);
+
       if (el) {
         const oldBg = el.style.background;
         const textEl = el.querySelector('.sugg-text');
@@ -695,30 +728,38 @@
         if (textEl) textEl.style.color = 'white';
         setTimeout(() => { el.style.background = oldBg; }, 400);
       }
+
       clearTimeout(checkAcceptTimer);
+
+      // Retry nhanh (~1.6s)
       checkAcceptTimer = setTimeout(() => {
-        if (lastAttemptedWord && detectSubmitFailed(lastAttemptedWord)) {
+        if (!lastAttemptedWord) {
+          actionInFlight = false;
+          return;
+        }
+
+        if (detectSubmitFailed(lastAttemptedWord)) {
           setTimeout(() => {
             if (!lastAttemptedWord) return;
             if (detectSubmitFailed(lastAttemptedWord)) {
               markAsBad(lastAttemptedWord);
-              if (autoEnabled) usedWords.delete(lastAttemptedWord);
+              usedWords.delete(lastAttemptedWord);
               justSubmittedByMe = false;
               actionInFlight = false;
               suggest(lastWord);
               if (autoEnabled) {
                 setTimeout(() => {
                   if (autoEnabled) tryAutoPlay();
-                }, 600);
+                }, 280);
               }
             } else {
               actionInFlight = false;
             }
-          }, 1500);
+          }, 400);
         } else {
           actionInFlight = false;
         }
-      }, 5000);
+      }, 1200);
     }
 
     function tryAutoPlay() {
@@ -727,11 +768,13 @@
       clearTimeout(autoTimer);
       clearTimeout(checkAcceptTimer);
       clearTimeout(escTimer);
+
       const chips = resultEl.querySelectorAll('.sugg');
       if (!chips.length) {
         scheduleEscape();
         return;
       }
+
       let best = null;
       for (const el of chips) {
         if (el.dataset.kind === 'dead') { best = el; break; }
@@ -755,7 +798,8 @@
         scheduleEscape();
         return;
       }
-      const delay = 60 + Math.random() * 120;
+
+      const delay = 50 + Math.random() * 90;
       actionInFlight = true;
       autoTimer = setTimeout(() => {
         if (!autoEnabled) { actionInFlight = false; return; }
@@ -776,18 +820,23 @@
         resultEl.innerHTML = `<div style="color:#d97706;font-size:13px;">Đang tải từ điển...</div>`;
         return;
       }
+
       const key = getLastSyllable(word);
       const curNorm = normWord(word);
       const allForKey = byFirst.get(key) || [];
 
-      const checkUsed = autoEnabled ? usedWords : new Set();
-      const available = allForKey.filter(w => w !== curNorm && !checkUsed.has(w) && !allSeenWords.has(w) && !badWords.has(w));
+      // CHỈ loại từ lỗi + từ hiện tại. KHÔNG loại từ đã dùng
+      const available = allForKey.filter(w =>
+        w !== curNorm &&
+        !badWords.has(w)
+      );
 
       if (!available.length) {
         resultEl.innerHTML = `<div style="color:#d97706;font-size:13px;padding:6px;">Hết từ · Đang bỏ qua...</div>`;
         if (autoEnabled) scheduleEscape();
         return;
       }
+
       const traps = [], deads = [], risks = [], oks = [];
       available.forEach(full => {
         if (trapSet.has(full)) {
@@ -800,11 +849,13 @@
           oks.push(full);
         }
       });
+
       const byCont = (a, b) => contCountOf(a) - contCountOf(b);
       traps.sort(byCont);
       deads.sort(byCont);
       risks.sort(byCont);
       oks.sort(byCont);
+
       const lim = isMobile ? 10 : 20;
       resultEl.innerHTML =
         sectionHtml('★ Nên dùng (bẫy)', '#b45309', traps.slice(0, lim), 'trap') +
@@ -818,8 +869,7 @@
           el.style.transform = 'translateY(-1px)';
           const full = el.dataset.full;
           const nextKey = getLastSyllable(full);
-          const checkUsed = autoEnabled ? usedWords : new Set();
-          const nextList = (byFirst.get(nextKey) || []).filter(w => !checkUsed.has(w) && !allSeenWords.has(w) && !badWords.has(w));
+          const nextList = (byFirst.get(nextKey) || []).filter(w => !badWords.has(w));
           if (!nextList.length) {
             tooltip.innerHTML = `<div style="opacity:.7">Không còn từ nối tiếp sau "<b>${nextKey}</b>"</div>`;
           } else {
@@ -861,6 +911,7 @@
           tooltip.style.display = 'none';
         };
       });
+
       if (autoEnabled) tryAutoPlay();
     }
 
@@ -872,18 +923,14 @@
         el.setAttribute('autocomplete', 'off');
         el.style.caretColor = 'transparent';
         el.style.pointerEvents = 'none';
-
         const proto = el.tagName === 'TEXTAREA'
           ? HTMLTextAreaElement.prototype
           : HTMLInputElement.prototype;
         const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-
         if (setter) setter.call(el, text);
         else el.value = text;
-
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
-
         return true;
       } catch (e) {
         return false;
@@ -895,13 +942,10 @@
         'input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]'
       );
       if (!input) return;
-
       fillEditable(input, text);
-
       try {
         input.focus({ preventScroll: true });
       } catch (e) {}
-
       setTimeout(() => {
         let btn =
           document.querySelector('button[class*="submitBtn"], button[class*="submit"]') ||
@@ -909,7 +953,6 @@
             b.querySelector('svg') ||
             /gửi|submit|ok|xác nhận|gửi từ/i.test((b.textContent || '').trim())
           );
-
         if (btn) {
           btn.click();
         } else {
@@ -924,12 +967,10 @@
             }));
           });
         }
-
         input.blur();
         if (document.activeElement && document.activeElement !== document.body) {
           document.activeElement.blur();
         }
-
         setTimeout(() => {
           input.removeAttribute('readonly');
           input.removeAttribute('inputmode');
@@ -997,8 +1038,8 @@
       }, { passive: false });
       panelEl.addEventListener('touchend', () => dragging = false);
     }
-    attachDrag(panel, headerEl, savePosition, ['.sugg', '#noitu-toggle', '#noitu-auto', '#noitu-clear']);
 
+    attachDrag(panel, headerEl, savePosition, ['.sugg', '#noitu-toggle', '#noitu-auto', '#noitu-clear']);
     if (!isMobile) {
       const panel2 = document.getElementById(HELPER2_ID);
       if (panel2 && header2El) {
@@ -1007,12 +1048,25 @@
     }
 
     tick();
-    if (!window.__noituTickInterval) window.__noituTickInterval = setInterval(tick, 1100);
+    if (!window.__noituTickInterval) {
+      window.__noituTickInterval = setInterval(tick, 700);
+    }
+
+    if (!window.__noituObserver) {
+      const observer = new MutationObserver(() => {
+        tick();
+      });
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true
+      });
+      window.__noituObserver = observer;
+    }
   }
 
   createHelper();
 
-  // Chặn focus mở bàn phím trên Quetta
   document.addEventListener('focusin', function(e) {
     const el = e.target;
     if (el.matches && el.matches('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]')) {
