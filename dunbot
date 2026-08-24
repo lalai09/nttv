@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Nối Từ Helper (noitu.fun) - UI đẹp
+// @name         Nối Từ Helper (noitu.fun) - UI đẹp mới
 // @namespace    http://tampermonkey.net/
-// @version      1.32
-// @description  Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + ẩn từ đã dùng + tự bỏ từ lỗi + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua đúng 1 lần + ghi từ mới từ đối thủ + 2 bảng riêng + khóa chống trùng + hiện số từ chính xác + chống trùng gợi ý + kéo resize 4 góc + 4 cạnh + thu gọn đúng
+// @version      2.2
+// @description  Gợi ý nối từ + tự dán + tự gửi + nhớ vị trí + tooltip + tự chọn (ưu tiên cụt) + mỗi từ chỉ dùng 1 lần + ẩn từ đã dùng + tự bỏ từ lỗi + chỉ dùng "không nên dùng" khi hết đường + tự bỏ qua đúng 1 lần + ghi từ mới từ đối thủ + 2 bảng riêng + khóa chống trùng + hiện số từ chính xác + chống trùng gợi ý + kéo resize 4 góc + 4 cạnh + thu gọn đúng + cuộn gợi ý mượt
 // @author       You
 // @match        https://www.noitu.fun/*
 // @match        https://noitu.fun/*
@@ -87,32 +87,36 @@
     const badWords = loadBadWords();
     const newWords = loadNewWords();
 
-    // Lưu chiều cao khi đang mở rộng (để thu gọn / mở lại đúng)
     let expandedHeight1 = null;
     let expandedHeight2 = null;
 
-    // ===================== STYLE CHUNG =====================
+    // ===================== STYLE =====================
     const style = document.createElement('style');
     style.textContent = `
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
       #noitu-helper, #noitu-helper-2 {
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
-        letter-spacing: -0.01em;
+        letter-spacing: -0.015em;
+        -webkit-font-smoothing: antialiased;
       }
       #noitu-helper *, #noitu-helper-2 * {
         box-sizing: border-box;
       }
+
       .noitu-chip {
-        transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         user-select: none;
       }
       .noitu-chip:hover {
-        transform: translateY(-2px);
-        filter: brightness(0.97);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+        transform: translateY(-2px) scale(1.02);
+        filter: brightness(1.05);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.1) !important;
       }
       .noitu-chip:active {
-        transform: translateY(0);
+        transform: translateY(0) scale(0.98);
       }
+
       #noitu-result::-webkit-scrollbar,
       #noitu-bad-list::-webkit-scrollbar,
       #noitu-new-list::-webkit-scrollbar {
@@ -126,115 +130,157 @@
       #noitu-result::-webkit-scrollbar-thumb,
       #noitu-bad-list::-webkit-scrollbar-thumb,
       #noitu-new-list::-webkit-scrollbar-thumb {
-        background: #d1d5db;
+        background: #cbd5e1;
         border-radius: 10px;
       }
+      #noitu-result::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+      }
 
-      /* ===== RESIZE HANDLES ===== */
       .noitu-resize-handle {
         position: absolute;
         z-index: 20;
         background: transparent;
+        transition: background 0.15s;
       }
       .noitu-resize-handle:hover {
-        background: rgba(16, 185, 129, 0.25);
+        background: rgba(16, 185, 129, 0.3);
       }
-      .noitu-rh-n  { top: -3px; left: 8px; right: 8px; height: 6px; cursor: n-resize; }
-      .noitu-rh-s  { bottom: -3px; left: 8px; right: 8px; height: 6px; cursor: s-resize; }
-      .noitu-rh-e  { right: -3px; top: 8px; bottom: 8px; width: 6px; cursor: e-resize; }
-      .noitu-rh-w  { left: -3px; top: 8px; bottom: 8px; width: 6px; cursor: w-resize; }
-      .noitu-rh-ne { top: -4px; right: -4px; width: 12px; height: 12px; cursor: ne-resize; border-radius: 0 4px 0 0; }
-      .noitu-rh-nw { top: -4px; left: -4px; width: 12px; height: 12px; cursor: nw-resize; border-radius: 4px 0 0 0; }
-      .noitu-rh-se { bottom: -4px; right: -4px; width: 12px; height: 12px; cursor: se-resize; border-radius: 0 0 4px 0; }
-      .noitu-rh-sw { bottom: -4px; left: -4px; width: 12px; height: 12px; cursor: sw-resize; border-radius: 0 0 0 4px; }
+      .noitu-rh-n  { top: -3px; left: 10px; right: 10px; height: 6px; cursor: n-resize; }
+      .noitu-rh-s  { bottom: -3px; left: 10px; right: 10px; height: 6px; cursor: s-resize; }
+      .noitu-rh-e  { right: -3px; top: 10px; bottom: 10px; width: 6px; cursor: e-resize; }
+      .noitu-rh-w  { left: -3px; top: 10px; bottom: 10px; width: 6px; cursor: w-resize; }
+      .noitu-rh-ne { top: -5px; right: -5px; width: 14px; height: 14px; cursor: ne-resize; border-radius: 0 6px 0 0; }
+      .noitu-rh-nw { top: -5px; left: -5px; width: 14px; height: 14px; cursor: nw-resize; border-radius: 6px 0 0 0; }
+      .noitu-rh-se { bottom: -5px; right: -5px; width: 14px; height: 14px; cursor: se-resize; border-radius: 0 0 6px 0; }
+      .noitu-rh-sw { bottom: -5px; left: -5px; width: 14px; height: 14px; cursor: sw-resize; border-radius: 0 0 0 6px; }
+
+      .noitu-btn {
+        border: none;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+      }
+      .noitu-btn:hover {
+        transform: translateY(-1px);
+      }
+      .noitu-btn:active {
+        transform: translateY(0);
+      }
+
+      .noitu-section-title {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 10px;
+      }
+      .noitu-section-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        display: inline-block;
+      }
     `;
     document.head.appendChild(style);
 
-    // ============ BẢNG 1: GỢI Ý ============
+    // ============ BẢNG 1 ============
     const panel = document.createElement('div');
     panel.id = HELPER_ID;
     panel.innerHTML = `
       <div id="noitu-header" style="
         display:flex; justify-content:space-between; align-items:center;
-        margin-bottom:14px; cursor:grab; padding-bottom:2px;
+        cursor:grab; flex-shrink:0;
       ">
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div style="display:flex; align-items:center; gap:10px;">
           <div style="
-            width:32px; height:32px; border-radius:10px;
-            background:linear-gradient(135deg,#10b981,#059669);
+            width:36px; height:36px; border-radius:12px;
+            background:linear-gradient(135deg,#10b981 0%,#059669 100%);
             display:flex; align-items:center; justify-content:center;
-            color:white; font-size:16px; font-weight:700;
-            box-shadow:0 4px 12px rgba(16,185,129,0.3);
+            color:white; font-size:18px;
+            box-shadow:0 4px 14px rgba(16,185,129,0.35);
           ">🧠</div>
           <div>
-            <div style="font-weight:700; font-size:15px; color:#111827; line-height:1.2;">Gợi ý Nối Từ</div>
-            <div id="noitu-word-count" style="font-size:11px; color:#6b7280; margin-top:1px;"></div>
+            <div style="font-weight:700; font-size:15.5px; color:#0f172a; line-height:1.2;">Gợi ý Nối Từ</div>
+            <div id="noitu-word-count" style="font-size:11.5px; color:#64748b; margin-top:2px; font-weight:500;"></div>
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
-          <button id="noitu-auto" style="
-            border:none; border-radius:9px; padding:6px 12px;
-            font-size:12px; font-weight:600; cursor:pointer;
-            transition:all 0.15s;
-          ">Tự chọn</button>
-          <button id="noitu-clear" title="Xóa lịch sử từ đã dùng trong phiên" style="
-            border:none; background:#fef2f2; color:#dc2626;
-            border-radius:9px; padding:6px 10px; font-size:12px;
-            font-weight:600; cursor:pointer;
+          <button id="noitu-auto" class="noitu-btn" style="padding:7px 13px; font-size:12.5px;">Tự chọn</button>
+          <button id="noitu-clear" class="noitu-btn" title="Xóa lịch sử từ đã dùng trong phiên" style="
+            background:#fef2f2; color:#dc2626; padding:7px 11px; font-size:12.5px;
           ">Xóa</button>
-          <button id="noitu-toggle" style="
-            border:none; background:#f3f4f6; color:#374151;
-            border-radius:9px; width:32px; height:32px;
-            font-size:16px; font-weight:600; cursor:pointer;
-            display:flex; align-items:center; justify-content:center;
+          <button id="noitu-toggle" class="noitu-btn" style="
+            background:#f1f5f9; color:#475569; width:34px; height:34px; font-size:16px;
           ">−</button>
         </div>
       </div>
-      <div id="noitu-body">
+
+      <div id="noitu-body" style="
+        display:flex; flex-direction:column; flex:1; min-height:0; margin-top:14px; overflow:hidden;
+      ">
         <div id="noitu-current" style="
           background:linear-gradient(135deg,#ecfdf5 0%,#d1fae5 100%);
-          padding:12px 14px; border-radius:12px; margin-bottom:14px;
-          font-size:17px; font-weight:700; text-align:center;
-          border:1px solid #a7f3d0; color:#065f46;
-          box-shadow:0 2px 8px rgba(16,185,129,0.08);
+          padding:14px 16px; border-radius:14px; margin-bottom:12px;
+          font-size:18px; font-weight:700; text-align:center;
+          border:1.5px solid #a7f3d0; color:#065f46;
+          box-shadow:0 2px 10px rgba(16,185,129,0.1);
+          letter-spacing:-0.02em; flex-shrink:0;
         ">Đang tìm từ...</div>
+
         <div id="noitu-status" style="
-          font-size:12px; color:#10b981; text-align:center;
-          margin-bottom:10px; font-weight:500;
-        ">Sẵn sàng</div>
+          font-size:12.5px; color:#10b981; text-align:center;
+          margin-bottom:12px; font-weight:600;
+          display:flex; align-items:center; justify-content:center; gap:6px; flex-shrink:0;
+        ">
+          <span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span>
+          Sẵn sàng
+        </div>
+
         <div id="noitu-result" style="
-          display:flex; flex-direction:column; gap:2px;
-          max-height:${isMobile ? '38vh' : '380px'};
-          overflow-y:auto; padding:2px 4px 6px 0;
+          display:flex; flex-direction:column; gap:4px;
+          flex:1; min-height:0;
+          overflow-y:auto; padding:2px 6px 8px 0;
           -webkit-overflow-scrolling:touch;
         "></div>
+
         <div style="
-          margin-top:12px; font-size:11px; color:#9ca3af;
-          text-align:center; line-height:1.4;
+          margin-top:12px; font-size:11px; color:#94a3b8;
+          text-align:center; line-height:1.5; font-weight:500; flex-shrink:0;
         ">Chạm chữ → tự dán + gửi · Hover xem chữ nối tiếp</div>
       </div>
     `;
 
     Object.assign(panel.style, {
       position: 'fixed',
-      background: '#ffffff',
-      border: '1px solid #e5e7eb',
-      borderRadius: '20px',
-      padding: isMobile ? '14px 16px' : '18px 20px',
+      background: 'rgba(255,255,255,0.97)',
+      border: '1px solid rgba(226,232,240,0.9)',
+      borderRadius: '22px',
+      padding: isMobile ? '16px 18px' : '20px 22px',
       zIndex: '999999',
-      boxShadow: '0 20px 50px rgba(0,0,0,0.12), 0 8px 20px rgba(0,0,0,0.06)',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
+      boxShadow: '0 25px 60px rgba(0,0,0,0.12), 0 10px 25px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.02)',
+      fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
       userSelect: 'none',
       touchAction: 'none',
       boxSizing: 'border-box',
-      width: isMobile ? 'auto' : '360px',
-      maxWidth: isMobile ? 'none' : '360px',
-      minWidth: '260px',
-      minHeight: '200px',
-      overflow: 'hidden'
+      width: isMobile ? 'auto' : '380px',
+      maxWidth: isMobile ? 'none' : '380px',
+      minWidth: '280px',
+      minHeight: '220px',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+      backdropFilter: 'blur(12px)'
     });
 
-    // Apply saved size
     if (savedSize && savedSize.width && savedSize.height) {
       panel.style.width = savedSize.width;
       panel.style.height = savedSize.height;
@@ -248,13 +294,13 @@
       panel.style.right = 'auto';
       panel.style.bottom = 'auto';
     } else if (isMobile) {
-      panel.style.bottom = '12px';
-      panel.style.left = '8px';
-      panel.style.right = '8px';
+      panel.style.bottom = '14px';
+      panel.style.left = '10px';
+      panel.style.right = '10px';
       panel.style.top = 'auto';
     } else {
       panel.style.top = '80px';
-      panel.style.right = '20px';
+      panel.style.right = '24px';
       panel.style.left = 'auto';
       panel.style.bottom = 'auto';
     }
@@ -268,67 +314,60 @@
     panel2.innerHTML = `
       <div id="noitu-header2" style="
         display:flex; justify-content:space-between; align-items:center;
-        margin-bottom:${collapsed2 ? '0' : '14px'}; cursor:grab;
+        cursor:grab; flex-shrink:0;
       ">
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div style="display:flex; align-items:center; gap:9px;">
           <div style="
-            width:28px; height:28px; border-radius:8px;
-            background:linear-gradient(135deg,#3b82f6,#2563eb);
+            width:30px; height:30px; border-radius:10px;
+            background:linear-gradient(135deg,#3b82f6 0%,#2563eb 100%);
             display:flex; align-items:center; justify-content:center;
-            color:white; font-size:14px;
-            box-shadow:0 3px 10px rgba(59,130,246,0.3);
+            color:white; font-size:15px;
+            box-shadow:0 3px 12px rgba(59,130,246,0.35);
           ">🗂️</div>
-          <div style="font-weight:700; font-size:14px; color:#111827;">Từ lỗi & Từ mới</div>
+          <div style="font-weight:700; font-size:14.5px; color:#0f172a;">Từ lỗi & Từ mới</div>
         </div>
-        <button id="noitu-toggle2" style="
-          border:none; background:#eff6ff; color:#1d4ed8;
-          border-radius:8px; width:28px; height:28px;
-          font-size:15px; font-weight:600; cursor:pointer;
-          display:flex; align-items:center; justify-content:center;
+        <button id="noitu-toggle2" class="noitu-btn" style="
+          background:#eff6ff; color:#1d4ed8; width:30px; height:30px; font-size:15px;
         ">${collapsed2 ? '+' : '−'}</button>
       </div>
-      <div id="noitu-body2" style="display:${collapsed2 ? 'none' : 'block'};">
-        <div id="noitu-bad-box" style="margin-bottom:16px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <div style="font-size:12px; font-weight:600; color:#6b7280;">
-              🚫 Từ không dùng được <span id="noitu-bad-count" style="color:#9ca3af;">(0)</span>
+
+      <div id="noitu-body2" style="display:${collapsed2 ? 'none' : 'flex'}; flex-direction:column; flex:1; min-height:0; margin-top:14px; overflow:hidden;">
+        <div id="noitu-bad-box" style="margin-bottom:18px; flex-shrink:0;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <div style="font-size:12.5px; font-weight:600; color:#64748b; display:flex; align-items:center; gap:6px;">
+              <span style="font-size:14px;">🚫</span>
+              Từ không dùng được
+              <span id="noitu-bad-count" style="color:#94a3b8; font-weight:500;">(0)</span>
             </div>
-            <button id="noitu-clear-bad" style="
-              border:none; background:#fef2f2; color:#dc2626;
-              border-radius:7px; padding:4px 10px; font-size:11px;
-              font-weight:600; cursor:pointer;
+            <button id="noitu-clear-bad" class="noitu-btn" style="
+              background:#fef2f2; color:#dc2626; padding:5px 11px; font-size:11.5px;
             ">Xóa hết</button>
           </div>
           <div id="noitu-bad-list" style="
-            display:flex; flex-wrap:wrap; gap:6px;
-            max-height:110px; overflow-y:auto; font-size:12px;
-            padding:2px;
+            display:flex; flex-wrap:wrap; gap:7px;
+            max-height:110px; overflow-y:auto; font-size:12.5px; padding:2px;
           "></div>
         </div>
-        <div id="noitu-new-box" style="
-          border-top:1px solid #f3f4f6; padding-top:14px;
-        ">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <div style="font-size:12px; font-weight:600; color:#6b7280;">
-              🆕 Từ mới từ đối thủ <span id="noitu-new-count" style="color:#9ca3af;">(0)</span>
+
+        <div id="noitu-new-box" style="border-top:1px solid #f1f5f9; padding-top:16px; flex:1; min-height:0; display:flex; flex-direction:column;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-shrink:0;">
+            <div style="font-size:12.5px; font-weight:600; color:#64748b; display:flex; align-items:center; gap:6px;">
+              <span style="font-size:14px;">🆕</span>
+              Từ mới từ đối thủ
+              <span id="noitu-new-count" style="color:#94a3b8; font-weight:500;">(0)</span>
             </div>
             <div style="display:flex; gap:5px;">
-              <button id="noitu-copy-new" style="
-                border:none; background:#eff6ff; color:#1d4ed8;
-                border-radius:7px; padding:4px 10px; font-size:11px;
-                font-weight:600; cursor:pointer;
+              <button id="noitu-copy-new" class="noitu-btn" style="
+                background:#eff6ff; color:#1d4ed8; padding:5px 11px; font-size:11.5px;
               ">Copy</button>
-              <button id="noitu-clear-new" style="
-                border:none; background:#f8fafc; color:#64748b;
-                border-radius:7px; padding:4px 10px; font-size:11px;
-                font-weight:600; cursor:pointer;
+              <button id="noitu-clear-new" class="noitu-btn" style="
+                background:#f8fafc; color:#64748b; padding:5px 11px; font-size:11.5px;
               ">Xóa</button>
             </div>
           </div>
           <div id="noitu-new-list" style="
-            display:flex; flex-wrap:wrap; gap:6px;
-            max-height:110px; overflow-y:auto; font-size:12px;
-            padding:2px;
+            display:flex; flex-wrap:wrap; gap:7px;
+            flex:1; min-height:0; overflow-y:auto; font-size:12.5px; padding:2px;
           "></div>
         </div>
       </div>
@@ -336,24 +375,26 @@
 
     Object.assign(panel2.style, {
       position: 'fixed',
-      background: '#ffffff',
-      border: '1px solid #e5e7eb',
-      borderRadius: '18px',
-      padding: isMobile ? '14px 16px' : '16px 18px',
+      background: 'rgba(255,255,255,0.97)',
+      border: '1px solid rgba(226,232,240,0.9)',
+      borderRadius: '20px',
+      padding: isMobile ? '15px 17px' : '17px 19px',
       zIndex: '999998',
-      boxShadow: '0 16px 40px rgba(0,0,0,0.1), 0 6px 16px rgba(0,0,0,0.05)',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
+      boxShadow: '0 20px 50px rgba(0,0,0,0.1), 0 8px 20px rgba(0,0,0,0.05), 0 0 0 1px rgba(0,0,0,0.02)',
+      fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
       userSelect: 'none',
       touchAction: 'none',
       boxSizing: 'border-box',
-      width: isMobile ? 'auto' : '310px',
-      maxWidth: isMobile ? 'none' : '310px',
-      minWidth: '240px',
-      minHeight: '160px',
-      overflow: 'hidden'
+      width: isMobile ? 'auto' : '320px',
+      maxWidth: isMobile ? 'none' : '320px',
+      minWidth: '250px',
+      minHeight: '170px',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+      backdropFilter: 'blur(12px)'
     });
 
-    // Apply saved size for panel 2
     if (savedSize2 && savedSize2.width && savedSize2.height) {
       panel2.style.width = savedSize2.width;
       panel2.style.height = savedSize2.height;
@@ -367,13 +408,13 @@
       panel2.style.right = 'auto';
       panel2.style.bottom = 'auto';
     } else if (isMobile) {
-      panel2.style.bottom = '12px';
-      panel2.style.right = '8px';
+      panel2.style.bottom = '14px';
+      panel2.style.right = '10px';
       panel2.style.left = 'auto';
       panel2.style.top = 'auto';
     } else {
       panel2.style.top = '80px';
-      panel2.style.right = '400px';
+      panel2.style.right = '420px';
       panel2.style.left = 'auto';
       panel2.style.bottom = 'auto';
     }
@@ -405,11 +446,11 @@
       if (autoEnabled) {
         autoBtn.style.background = 'linear-gradient(135deg,#10b981,#059669)';
         autoBtn.style.color = 'white';
-        autoBtn.style.boxShadow = '0 4px 12px rgba(16,185,129,0.35)';
+        autoBtn.style.boxShadow = '0 4px 14px rgba(16,185,129,0.4)';
         autoBtn.textContent = 'Tự chọn: Bật';
       } else {
-        autoBtn.style.background = '#f3f4f6';
-        autoBtn.style.color = '#374151';
+        autoBtn.style.background = '#f1f5f9';
+        autoBtn.style.color = '#475569';
         autoBtn.style.boxShadow = 'none';
         autoBtn.textContent = 'Tự chọn';
       }
@@ -441,11 +482,11 @@
       actionInFlight = false;
       lastEscWord = null;
       lastEscTime = 0;
-      statusEl.textContent = 'Đã xóa lịch sử phiên';
+      statusEl.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:#d97706;display:inline-block;"></span> Đã xóa lịch sử phiên`;
       statusEl.style.color = '#d97706';
       setTimeout(() => {
         if (isReady) {
-          statusEl.textContent = 'Sẵn sàng';
+          statusEl.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span> Sẵn sàng`;
           statusEl.style.color = '#10b981';
         }
       }, 1500);
@@ -464,11 +505,11 @@
       lastEscWord = null;
       lastEscTime = 0;
       if (lastWord) suggest(lastWord);
-      statusEl.textContent = 'Đã xóa danh sách từ lỗi';
+      statusEl.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:#d97706;display:inline-block;"></span> Đã xóa danh sách từ lỗi`;
       statusEl.style.color = '#d97706';
       setTimeout(() => {
         if (isReady) {
-          statusEl.textContent = 'Sẵn sàng';
+          statusEl.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span> Sẵn sàng`;
           statusEl.style.color = '#10b981';
         }
       }, 1500);
@@ -515,14 +556,13 @@
     function renderBadList() {
       badCountEl.textContent = `(${badWords.size})`;
       if (badWords.size === 0) {
-        badListEl.innerHTML = '<span style="color:#9ca3af;font-size:11px;">Chưa có từ nào</span>';
+        badListEl.innerHTML = '<span style="color:#94a3b8;font-size:12px;font-weight:500;">Chưa có từ nào</span>';
         return;
       }
       badListEl.innerHTML = [...badWords].map(w => {
         return `<span title="${w}" style="
           background:#f8fafc; border:1px solid #e2e8f0; color:#64748b;
-          padding:3px 10px; border-radius:999px; font-size:11.5px;
-          font-weight:500;
+          padding:4px 11px; border-radius:999px; font-size:12px; font-weight:500;
         ">${w}</span>`;
       }).join('');
     }
@@ -531,64 +571,75 @@
     function renderNewList() {
       newCountEl.textContent = `(${newWords.size})`;
       if (newWords.size === 0) {
-        newListEl.innerHTML = '<span style="color:#9ca3af;font-size:11px;">Chưa có từ nào</span>';
+        newListEl.innerHTML = '<span style="color:#94a3b8;font-size:12px;font-weight:500;">Chưa có từ nào</span>';
         return;
       }
       newListEl.innerHTML = [...newWords].map(w => {
         return `<span title="${w}" style="
           background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8;
-          padding:3px 10px; border-radius:999px; font-size:11.5px;
-          font-weight:500;
+          padding:4px 11px; border-radius:999px; font-size:12px; font-weight:500;
         ">${w}</span>`;
       }).join('');
     }
     renderNewList();
 
-    // ===== THU GỌN BẢNG 1 =====
+    // ========== THU GỌN BẢNG 1 ==========
     let collapsed = isMobile;
-    function applyCollapsed() {
-      bodyEl.style.display = collapsed ? 'none' : 'block';
-      toggleBtn.textContent = collapsed ? '+' : '−';
 
+    function applyCollapsed() {
       if (collapsed) {
-        // Lưu chiều cao hiện tại trước khi thu gọn
         if (panel.style.height && panel.style.height !== 'auto') {
           expandedHeight1 = panel.style.height;
+        } else {
+          expandedHeight1 = panel.offsetHeight + 'px';
         }
+        bodyEl.style.display = 'none';
+        toggleBtn.textContent = '+';
+        panel.style.minHeight = '0';
         panel.style.height = 'auto';
       } else {
-        // Khôi phục chiều cao đã lưu
+        bodyEl.style.display = 'flex';
+        toggleBtn.textContent = '−';
         if (expandedHeight1) {
           panel.style.height = expandedHeight1;
         }
+        panel.style.minHeight = '220px';
       }
     }
+
     applyCollapsed();
+
     toggleBtn.addEventListener('click', e => {
       e.stopPropagation();
       collapsed = !collapsed;
       applyCollapsed();
     });
 
-    // ===== THU GỌN BẢNG 2 =====
+    // ========== THU GỌN BẢNG 2 ==========
     function applyCollapsed2() {
-      body2El.style.display = collapsed2 ? 'none' : 'block';
-      header2El.style.marginBottom = collapsed2 ? '0' : '14px';
-      toggle2Btn.textContent = collapsed2 ? '+' : '−';
-      saveCollapse2(collapsed2);
-
       if (collapsed2) {
         if (panel2.style.height && panel2.style.height !== 'auto') {
           expandedHeight2 = panel2.style.height;
+        } else {
+          expandedHeight2 = panel2.offsetHeight + 'px';
         }
+        body2El.style.display = 'none';
+        toggle2Btn.textContent = '+';
+        panel2.style.minHeight = '0';
         panel2.style.height = 'auto';
       } else {
+        body2El.style.display = 'flex';
+        toggle2Btn.textContent = '−';
         if (expandedHeight2) {
           panel2.style.height = expandedHeight2;
         }
+        panel2.style.minHeight = '170px';
       }
+      saveCollapse2(collapsed2);
     }
+
     applyCollapsed2();
+
     toggle2Btn.addEventListener('click', e => {
       e.stopPropagation();
       collapsed2 = !collapsed2;
@@ -614,7 +665,7 @@
     let lastEscTime = 0;
     const ESC_COOLDOWN = 5500;
 
-    statusEl.textContent = 'Đang tải kho từ...';
+    statusEl.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:#d97706;display:inline-block;"></span> Đang tải kho từ...`;
     statusEl.style.color = '#d97706';
     wordCountEl.textContent = '';
 
@@ -661,7 +712,7 @@
     function updateWordCountDisplay() {
       if (isReady) {
         wordCountEl.textContent = `${totalValidWords.toLocaleString('vi-VN')} từ · ${byFirst.size} âm`;
-        statusEl.textContent = 'Sẵn sàng';
+        statusEl.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span> Sẵn sàng`;
         statusEl.style.color = '#10b981';
       }
     }
@@ -677,7 +728,7 @@
         })
         .catch(() => {
           isReady = false;
-          statusEl.textContent = 'Lỗi tải kho từ';
+          statusEl.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:#dc2626;display:inline-block;"></span> Lỗi tải kho từ`;
           statusEl.style.color = '#dc2626';
           wordCountEl.textContent = '';
         });
@@ -767,13 +818,13 @@
       return `<div class="sugg noitu-chip" data-full="${full}" data-kind="${kind}"
         style="
           display:inline-flex; align-items:center;
-          padding:${isMobile ? '8px 14px' : '7px 13px'};
+          padding:${isMobile ? '9px 15px' : '8px 14px'};
           background:${s.bg}; border:1.5px solid ${s.border};
           border-radius:999px; cursor:pointer;
-          font-size:${isMobile ? '14px' : '13.5px'};
+          font-size:${isMobile ? '14.5px' : '13.5px'};
           font-weight:${kind === 'trap' ? '700' : '600'};
           color:${s.color}; white-space:nowrap;
-          box-shadow:0 2px 6px rgba(0,0,0,0.04);
+          box-shadow:0 2px 8px rgba(0,0,0,0.05);
         ">
         <span class="sugg-text">${mark}${second}</span>
       </div>`;
@@ -781,21 +832,13 @@
 
     function sectionHtml(title, color, items, kind) {
       if (!items.length) return '';
-      return `<div style="margin-bottom:14px;">
-        <div style="
-          font-size:11px; font-weight:700; letter-spacing:0.04em;
-          text-transform:uppercase; color:${color};
-          margin:0 0 8px; display:flex; align-items:center; gap:7px;
-        ">
-          <span style="
-            width:7px; height:7px; border-radius:50%;
-            background:${color}; display:inline-block;
-            box-shadow:0 0 0 3px ${color}22;
-          "></span>
+      return `<div style="margin-bottom:16px;">
+        <div class="noitu-section-title" style="color:${color};">
+          <span class="noitu-section-dot" style="background:${color}; box-shadow:0 0 0 3px ${color}22;"></span>
           ${title}
-          <span style="font-weight:500; opacity:0.65; font-size:10.5px;">(${items.length})</span>
+          <span style="font-weight:500; opacity:0.6; font-size:11px;">(${items.length})</span>
         </div>
-        <div style="display:flex; flex-wrap:wrap; gap:7px;">
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">
           ${items.map(w => chipHtml(w, kind)).join('')}
         </div>
       </div>`;
@@ -808,19 +851,20 @@
       Object.assign(tooltip.style, {
         position: 'fixed',
         zIndex: '1000000',
-        background: '#111827',
-        color: '#f9fafb',
-        padding: '12px 14px',
-        borderRadius: '14px',
+        background: '#0f172a',
+        color: '#f8fafc',
+        padding: '14px 16px',
+        borderRadius: '16px',
         fontSize: '13px',
-        maxWidth: '290px',
-        maxHeight: '240px',
+        maxWidth: '300px',
+        maxHeight: '260px',
         overflowY: 'auto',
-        boxShadow: '0 16px 40px rgba(0,0,0,0.4)',
+        boxShadow: '0 20px 50px rgba(0,0,0,0.45)',
         display: 'none',
         pointerEvents: 'none',
         lineHeight: '1.55',
-        border: '1px solid #374151'
+        border: '1px solid #1e293b',
+        fontFamily: 'Inter, system-ui, sans-serif'
       });
       document.body.appendChild(tooltip);
     }
@@ -833,11 +877,11 @@
       badWords.add(norm);
       saveBadWords(badWords);
       renderBadList();
-      statusEl.textContent = `Đã lưu từ lỗi: ${norm}`;
+      statusEl.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:#dc2626;display:inline-block;"></span> Đã lưu từ lỗi: ${norm}`;
       statusEl.style.color = '#dc2626';
       setTimeout(() => {
         if (isReady) {
-          statusEl.textContent = 'Sẵn sàng';
+          statusEl.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span> Sẵn sàng`;
           statusEl.style.color = '#10b981';
         }
       }, 2000);
@@ -870,11 +914,11 @@
           target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
         });
       }
-      statusEl.textContent = 'Đã tự bỏ qua';
+      statusEl.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:#dc2626;display:inline-block;"></span> Đã tự bỏ qua`;
       statusEl.style.color = '#dc2626';
       setTimeout(() => {
         if (isReady) {
-          statusEl.textContent = 'Sẵn sàng';
+          statusEl.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span> Sẵn sàng`;
           statusEl.style.color = '#10b981';
         }
       }, 2000);
@@ -1021,7 +1065,7 @@
       }
       currentEl.textContent = word;
       if (!isReady) {
-        resultEl.innerHTML = `<div style="color:#d97706;font-size:13px;padding:8px 0;">Đang tải từ điển...</div>`;
+        resultEl.innerHTML = `<div style="color:#d97706;font-size:13.5px;padding:10px 0;font-weight:500;">Đang tải từ điển...</div>`;
         return;
       }
       const key = getLastSyllable(word);
@@ -1037,7 +1081,7 @@
         available.push(w);
       }
       if (!available.length) {
-        resultEl.innerHTML = `<div style="color:#d97706;font-size:13px;padding:8px 0;">Hết từ · Đang bỏ qua...</div>`;
+        resultEl.innerHTML = `<div style="color:#d97706;font-size:13.5px;padding:10px 0;font-weight:500;">Hết từ · Đang bỏ qua...</div>`;
         if (autoEnabled) scheduleEscape();
         return;
       }
@@ -1087,21 +1131,21 @@
               else if (isRiskyTrap(w)) nextRisks.push(w);
               else nextOks.push(w);
             });
-            let html = `<div style="font-weight:700;margin-bottom:8px;color:#6ee7b7">Nối tiếp sau "<b>${nextKey}</b>" (${nextList.length})</div>`;
+            let html = `<div style="font-weight:700;margin-bottom:10px;color:#6ee7b7">Nối tiếp sau "<b>${nextKey}</b>" (${nextList.length})</div>`;
             if (nextTraps.length) {
-              html += `<div style="color:#fbbf24;margin:6px 0 3px;font-weight:600">★ Bẫy:</div>`;
+              html += `<div style="color:#fbbf24;margin:8px 0 4px;font-weight:600">★ Bẫy:</div>`;
               html += nextTraps.slice(0, 7).map(w => `<div style="opacity:0.9">• ${w}</div>`).join('');
             }
             if (nextDeads.length) {
-              html += `<div style="color:#f87171;margin:6px 0 3px;font-weight:600">✗ Cụt:</div>`;
+              html += `<div style="color:#f87171;margin:8px 0 4px;font-weight:600">✗ Cụt:</div>`;
               html += nextDeads.slice(0, 5).map(w => `<div style="opacity:0.9">• ${w}</div>`).join('');
             }
             if (nextRisks.length) {
-              html += `<div style="color:#fb923c;margin:6px 0 3px;font-weight:600">✗ Không nên:</div>`;
+              html += `<div style="color:#fb923c;margin:8px 0 4px;font-weight:600">✗ Không nên:</div>`;
               html += nextRisks.slice(0, 5).map(w => `<div style="opacity:0.9">• ${w}</div>`).join('');
             }
             if (nextOks.length) {
-              html += `<div style="color:#86efac;margin:6px 0 3px;font-weight:600">Thường:</div>`;
+              html += `<div style="color:#86efac;margin:8px 0 4px;font-weight:600">Thường:</div>`;
               html += nextOks.slice(0, 8).map(w => `<div style="opacity:0.9">• ${w}</div>`).join('');
             }
             tooltip.innerHTML = html;
@@ -1109,10 +1153,10 @@
           const rect = el.getBoundingClientRect();
           tooltip.style.display = 'block';
           let left = rect.left;
-          if (left + 300 > window.innerWidth) left = window.innerWidth - 310;
-          if (left < 6) left = 6;
+          if (left + 310 > window.innerWidth) left = window.innerWidth - 320;
+          if (left < 8) left = 8;
           tooltip.style.left = left + 'px';
-          tooltip.style.top = (rect.bottom + 10) + 'px';
+          tooltip.style.top = (rect.bottom + 12) + 'px';
         };
         el.onmouseleave = () => {
           tooltip.style.display = 'none';
@@ -1177,7 +1221,7 @@
       }
     }
 
-    // ===== Kéo thả di chuyển =====
+    // ===== Kéo thả =====
     function attachDrag(panelEl, headerEl, savePosFn, excludeSelectors) {
       let dragging = false, ox = 0, oy = 0;
       function start(x, y, target) {
@@ -1213,7 +1257,7 @@
       panelEl.addEventListener('touchend', () => dragging = false);
     }
 
-    // ===== RESIZE (4 góc + 4 cạnh) =====
+    // ===== RESIZE =====
     function attachResize(panelEl, saveSizeFn, isPanel1 = true) {
       const directions = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
       const handles = {};
@@ -1229,8 +1273,7 @@
       let resizing = false;
       let startX, startY, startW, startH, startL, startT, dir;
 
-      const minW = parseInt(panelEl.style.minWidth) || 240;
-      const minH = parseInt(panelEl.style.minHeight) || 160;
+      const minW = parseInt(panelEl.style.minWidth) || 250;
 
       function onStart(e, direction) {
         e.preventDefault();
@@ -1270,13 +1313,12 @@
           newW = Math.max(minW, startW - dx);
           newL = startL + (startW - newW);
         }
-        if (dir.includes('s')) newH = Math.max(minH, startH + dy);
+        if (dir.includes('s')) newH = Math.max(60, startH + dy);
         if (dir.includes('n')) {
-          newH = Math.max(minH, startH - dy);
+          newH = Math.max(60, startH - dy);
           newT = startT + (startH - newH);
         }
 
-        // Giới hạn không vượt ra ngoài màn hình
         if (newL < 4) {
           newW -= (4 - newL);
           newL = 4;
@@ -1302,10 +1344,8 @@
         if (!resizing) return;
         resizing = false;
 
-        // Lưu kích thước
         saveSizeFn(panelEl.style.width, panelEl.style.height);
 
-        // Cập nhật chiều cao mở rộng nếu đang không thu gọn
         if (isPanel1) {
           if (!collapsed) expandedHeight1 = panelEl.style.height;
           savePosition(panelEl.style.left, panelEl.style.top);
@@ -1327,12 +1367,11 @@
       document.addEventListener('touchend', onEnd);
     }
 
-    // Gắn drag + resize
     attachDrag(panel, headerEl, savePosition, ['.sugg', '#noitu-toggle', '#noitu-auto', '#noitu-clear', '.noitu-resize-handle']);
     attachDrag(panel2, header2El, savePosition2, ['#noitu-toggle2', '#noitu-clear-bad', '#noitu-clear-new', '#noitu-copy-new', '.noitu-resize-handle']);
 
-    attachResize(panel, saveSize, true);    // bảng 1
-    attachResize(panel2, saveSize2, false); // bảng 2
+    attachResize(panel, saveSize, true);
+    attachResize(panel2, saveSize2, false);
 
     tick();
     if (!window.__noituTickInterval) window.__noituTickInterval = setInterval(tick, 1100);
