@@ -74,7 +74,17 @@
     function isDeadEndWord(word, badWords) {
         const ns = word.split(' ')[1];
         const opts = byFirst.get(ns) || [];
-        return opts.filter(w => w !== word && !badWords.has(w)).length === 0;
+        return opts.filter(w => w !== word && !badWords.has(w) && !usedWords.has(w)).length === 0;
+    }
+
+    function isRiskyTrap(word, badWords) {
+        const ns = word.split(' ')[1];
+        const opts = byFirst.get(ns) || [];
+        const available = opts.filter(w => !badWords.has(w) && !usedWords.has(w));
+        if (!available.length) return null;
+        if (available.some(w => isDeadEndWord(w, badWords))) return 'risk-dead';
+        if (available.some(w => trapSet.has(w))) return 'risk-trap';
+        return null;
     }
 
     function loadBadWords() {
@@ -114,46 +124,75 @@
             <div id="wd-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;cursor:grab;">
                 <div style="font-size: 11px; color: #888; font-weight: bold;">TOOL NHẬN DIỆN NỐI TỪ</div>
                 <div style="display:flex;align-items:center;gap:6px;">
+                    <button id="wd-auto" style="border:none;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;cursor:pointer;background:#333;color:#ccc;">Tự động</button>
+                    <button id="wd-clear" style="border:none;background:#fef2f2;color:#b91c1c;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;cursor:pointer;">Xóa</button>
                     <div id="wd-status" style="font-size: 10px; color: #d97706; font-weight: bold;">Đang tải...</div>
                     <button id="wd-toggle" style="border:none;background:#00ffcc;color:#000;border-radius:6px;width:20px;height:20px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</button>
                 </div>
             </div>
             <div id="wd-body">
-                <div id="wd-original" style="padding: 8px; border: 1px solid #333; border-radius:8px; color: #ff0; font-size: 18px; font-weight: bold; margin-top:4px;">Chờ từ...</div>
+                <table style="width: 100%; border-collapse: collapse; margin-top: 2px;">
+                    <thead>
+                        <tr style="background: #00ffcc; color: #000; font-size: 12px; font-weight: bold;">
+                            <th style="padding: 4px; border: 1px solid #333;">Từ gốc</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td id="wd-original" style="padding: 6px; border: 1px solid #333; color: #ff0; font-size: 16px; font-weight: bold;">Chờ từ...</td>
+                        </tr>
+                    </tbody>
+                </table>
                 <div id="wd-suggest" style="display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin-top:8px;max-height:32vh;overflow-y:auto;"></div>
             </div>
         `;
 
         document.body.appendChild(panel);
+        attachDrag(panel, panel.querySelector('#wd-header'));
+        attachToggle(panel);
+        attachAutoButton(panel);
+        attachClearButton(panel);
+    }
 
-        const header = document.getElementById('wd-header');
-        const body = document.getElementById('wd-body');
-        const toggleBtn = document.getElementById('wd-toggle');
+    function loadPos() {
+        try {
+            const raw = localStorage.getItem('wd_panel_pos');
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    }
+    function savePos(left, top) {
+        try { localStorage.setItem('wd_panel_pos', JSON.stringify({ left, top })); } catch (e) {}
+    }
+    function loadCollapsed() {
+        try { return localStorage.getItem('wd_panel_collapsed') === '1'; } catch (e) { return false; }
+    }
+    function saveCollapsed(on) {
+        try { localStorage.setItem('wd_panel_collapsed', on ? '1' : '0'); } catch (e) {}
+    }
 
-        let collapsed = false;
-        try { collapsed = localStorage.getItem('wd_collapsed') === '1'; } catch (e) {}
-        function applyCollapsed() {
-            body.style.display = collapsed ? 'none' : 'block';
+    function attachToggle(panel) {
+        const toggleBtn = panel.querySelector('#wd-toggle');
+        const bodyEl = panel.querySelector('#wd-body');
+        let collapsed = loadCollapsed();
+        function apply() {
+            bodyEl.style.display = collapsed ? 'none' : 'block';
             toggleBtn.textContent = collapsed ? '+' : '−';
-            try { localStorage.setItem('wd_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+            saveCollapsed(collapsed);
         }
-        applyCollapsed();
+        apply();
         toggleBtn.addEventListener('click', e => {
             e.stopPropagation();
             collapsed = !collapsed;
-            applyCollapsed();
+            apply();
         });
+    }
 
-        // Kéo thả bảng
-        let saved = null;
-        try {
-            const raw = localStorage.getItem('wd_panel_pos');
-            saved = raw ? JSON.parse(raw) : null;
-        } catch (e) {}
+    function attachDrag(panel, header) {
+        const saved = loadPos();
         if (saved && saved.left && saved.top) {
-            panel.style.left = saved.left;
-            panel.style.top = saved.top;
-            panel.style.width = saved.width || panel.style.width;
+            panel.style.setProperty('left', saved.left, 'important');
+            panel.style.setProperty('top', saved.top, 'important');
+            panel.style.setProperty('right', 'auto', 'important');
         }
 
         let dragging = false, ox = 0, oy = 0;
@@ -162,20 +201,18 @@
             const rect = panel.getBoundingClientRect();
             ox = x - rect.left;
             oy = y - rect.top;
-            panel.style.left = rect.left + 'px';
-            panel.style.top = rect.top + 'px';
-            panel.style.width = rect.width + 'px';
+            panel.style.setProperty('left', rect.left + 'px', 'important');
+            panel.style.setProperty('top', rect.top + 'px', 'important');
+            panel.style.setProperty('right', 'auto', 'important');
             return true;
         }
         function move(x, y) {
             const w = panel.offsetWidth, h = panel.offsetHeight;
             let left = Math.max(4, Math.min(window.innerWidth - w - 4, x - ox));
             let top = Math.max(4, Math.min(window.innerHeight - h - 4, y - oy));
-            panel.style.left = left + 'px';
-            panel.style.top = top + 'px';
-            try {
-                localStorage.setItem('wd_panel_pos', JSON.stringify({ left: panel.style.left, top: panel.style.top, width: panel.style.width }));
-            } catch (e) {}
+            panel.style.setProperty('left', left + 'px', 'important');
+            panel.style.setProperty('top', top + 'px', 'important');
+            savePos(panel.style.left, panel.style.top);
         }
         header.addEventListener('mousedown', e => { dragging = start(e.clientX, e.clientY, e.target); });
         document.addEventListener('mousemove', e => { if (dragging) move(e.clientX, e.clientY); });
@@ -191,15 +228,142 @@
         panel.addEventListener('touchend', () => dragging = false);
     }
 
+    let autoEnabled = (function () {
+        try { return localStorage.getItem('wd_auto') === '1'; } catch (e) { return false; }
+    })();
+    function saveAuto(on) {
+        try { localStorage.setItem('wd_auto', on ? '1' : '0'); } catch (e) {}
+    }
+    let lastSubmitted = null;
+    let autoTimer = null;
+    const usedWords = new Set();
+    let lastSkippedWord = null;
+    let skipTimer = null;
+
+    function sendSkip() {
+        const skipBtn = Array.from(document.querySelectorAll('button')).find(b =>
+            /bỏ qua|skip|pass/i.test((b.textContent || '').trim())
+        );
+        if (skipBtn) {
+            skipBtn.click();
+        } else {
+            const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
+            const targets = [input, document].filter(Boolean);
+            targets.forEach(target => {
+                target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
+                target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
+            });
+        }
+    }
+
+    function attachAutoButton(panel) {
+        const btn = panel.querySelector('#wd-auto');
+        function apply() {
+            if (autoEnabled) {
+                btn.style.background = '#059669';
+                btn.style.color = '#fff';
+                btn.textContent = 'Tự động: Bật';
+            } else {
+                btn.style.background = '#333';
+                btn.style.color = '#ccc';
+                btn.textContent = 'Tự động';
+            }
+        }
+        apply();
+        btn.addEventListener('click', e => {
+            e.stopPropagation();
+            autoEnabled = !autoEnabled;
+            saveAuto(autoEnabled);
+            apply();
+            if (autoEnabled && lastText) tryAutoPlay();
+        });
+    }
+
+    function fillAndSubmit(full) {
+        lastSubmitted = full;
+        usedWords.add(full);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(full).catch(() => {});
+        }
+        const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
+        if (!input) return;
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        if (setter) setter.call(input, full);
+        else input.value = full;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+
+        setTimeout(() => {
+            let sendBtn =
+                document.querySelector('button[class*="submitBtn"], button[class*="submit"]') ||
+                Array.from(document.querySelectorAll('button')).find(b =>
+                    b.querySelector('svg') ||
+                    /gửi|submit|ok|xác nhận|gửi từ/i.test((b.textContent || '').trim())
+                );
+            if (sendBtn) {
+                sendBtn.click();
+            } else {
+                ['keydown', 'keypress', 'keyup'].forEach(type => {
+                    input.dispatchEvent(new KeyboardEvent(type, {
+                        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
+                    }));
+                });
+            }
+        }, 60);
+    }
+
+    function tryAutoPlay() {
+        if (!autoEnabled) return;
+        clearTimeout(autoTimer);
+        const box = document.getElementById('wd-suggest');
+        if (!box) return;
+        // Ưu tiên: cụt -> bẫy -> thường -> không nên dùng
+        const priority = ['dead', 'trap', 'ok', 'risk-trap', 'risk-dead'];
+        let best = null;
+        for (const kind of priority) {
+            best = box.querySelector(`.wd-sugg[data-kind="${kind}"]`);
+            if (best) break;
+        }
+        if (!best) return;
+        const full = best.dataset.full;
+        const delay = 250 + Math.random() * 250;
+        autoTimer = setTimeout(() => {
+            if (!autoEnabled) return;
+            fillAndSubmit(full);
+        }, delay);
+    }
+
+    function attachClearButton(panel) {
+        const btn = panel.querySelector('#wd-clear');
+        btn.addEventListener('click', e => {
+            e.stopPropagation();
+            usedWords.clear();
+            badWords.clear();
+            saveBadWords(badWords);
+            lastSkippedWord = null;
+            clearTimeout(autoTimer);
+            clearTimeout(skipTimer);
+            const statusEl = document.getElementById('wd-status');
+            if (statusEl) {
+                statusEl.textContent = 'Đã xóa phiên';
+                statusEl.style.color = '#d97706';
+                setTimeout(updateDictStatus, 1200);
+            }
+            if (lastText) renderSuggestions(lastText);
+        });
+    }
+
     function chip(full, kind) {
         const second = full.split(' ')[1];
         const styles = {
-            trap: { bg: 'rgba(255,215,0,.18)', border: '#f5c518', color: '#ffd700', mark: '★ ' },
-            dead: { bg: 'rgba(255,92,122,.15)', border: '#ff5c7a', color: '#ff8fa3', mark: '✗ ' },
+            trap: { bg: 'rgba(255,140,0,.22)', border: '#ff8c00', color: '#ffb84d', mark: '★ ' },
+            dead: { bg: 'rgba(255,92,122,.15)', border: '#ff5c7a', color: '#ff8fa3', mark: '✓ ' },
+            'risk-trap': { bg: 'rgba(255,215,0,.22)', border: '#ffd700', color: '#fff0a3', mark: '✗ ' },
+            'risk-dead': { bg: 'rgba(147,112,219,.20)', border: '#9370db', color: '#c9a9ff', mark: '✗ ' },
             ok:   { bg: 'rgba(0,255,204,.10)', border: '#00ffcc', color: '#e6fffb', mark: '' }
         };
         const s = styles[kind] || styles.ok;
-        return `<div class="wd-sugg" data-full="${full}"
+        return `<div class="wd-sugg" data-full="${full}" data-kind="${kind}"
             style="padding:6px 10px;background:${s.bg};border:1.5px solid ${s.border};
                    border-radius:999px;font-size:13px;font-weight:600;color:${s.color};cursor:pointer;">
             ${s.mark}${second}
@@ -223,43 +387,51 @@
         }
 
         const key = parts[1];
-        const available = (byFirst.get(key) || []).filter(w => w !== norm && !badWords.has(w));
+        const available = (byFirst.get(key) || []).filter(w => w !== norm && !badWords.has(w) && !usedWords.has(w));
 
         if (!available.length) {
             box.innerHTML = `<div style="color:#ff5577;font-size:12px;">Hết từ nối cho "${key}"</div>`;
+            if (autoEnabled && lastSkippedWord !== norm) {
+                lastSkippedWord = norm;
+                clearTimeout(skipTimer);
+                skipTimer = setTimeout(() => {
+                    if (autoEnabled && lastText && normWord(lastText) === norm) {
+                        sendSkip();
+                    }
+                }, 300 + Math.random() * 300);
+            }
             return;
         }
 
-        const traps = [], deads = [], oks = [];
+        const traps = [], deads = [], riskTraps = [], riskDeads = [], oks = [];
         available.forEach(w => {
             if (trapSet.has(w)) traps.push(w);
             else if (isDeadEndWord(w, badWords)) deads.push(w);
-            else oks.push(w);
+            else {
+                const risk = isRiskyTrap(w, badWords);
+                if (risk === 'risk-trap') riskTraps.push(w);
+                else if (risk === 'risk-dead') riskDeads.push(w);
+                else oks.push(w);
+            }
         });
 
         const lim = 14;
         box.innerHTML =
             traps.slice(0, lim).map(w => chip(w, 'trap')).join('') +
             deads.slice(0, lim).map(w => chip(w, 'dead')).join('') +
-            oks.slice(0, lim).map(w => chip(w, 'ok')).join('');
+            oks.slice(0, lim).map(w => chip(w, 'ok')).join('') +
+            riskTraps.slice(0, lim).map(w => chip(w, 'risk-trap')).join('') +
+            riskDeads.slice(0, lim).map(w => chip(w, 'risk-dead')).join('');
 
         box.querySelectorAll('.wd-sugg').forEach(el => {
             el.onclick = () => {
                 const full = el.dataset.full;
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(full).catch(() => {});
-                }
-                const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
-                if (input) {
-                    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-                    if (setter) setter.call(input, full);
-                    else input.value = full;
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.focus();
-                }
+                fillAndSubmit(full);
                 el.style.background = '#059669';
             };
         });
+
+        if (autoEnabled) tryAutoPlay();
     }
 
     let lastText = "";
@@ -291,15 +463,15 @@
 
         if (matchedText && matchedText !== lastText) {
             lastText = matchedText;
-            const words = matchedText.split(/\s+/);
-            const lastSyllable = words[words.length - 1];
+
+            const norm = normWord(matchedText);
+            if (norm && norm.split(' ').length === 2) {
+                usedWords.add(norm);
+            }
 
             const origEl = document.getElementById('wd-original');
-            const targetEl = document.getElementById('wd-target');
-
-            if (origEl && targetEl) {
+            if (origEl) {
                 origEl.innerText = matchedText;
-                targetEl.innerText = lastSyllable;
             }
 
             renderSuggestions(matchedText);
