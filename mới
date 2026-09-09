@@ -1,0 +1,1259 @@
+// ==UserScript==
+// @name         Bảng Nhận Diện Từ + Gợi Ý - noitu.fun (Mobile Fixed, AI Deep)
+// @namespace    http://tampermonkey.net/
+// @version      7.0
+// @description  Bảng cố định mobile: nhận diện từ + gợi ý + AI phân tích sâu (minimax) ưu tiên Cụt + nền đen/trong suốt
+// @author       You
+// @match        https://*.noitu.fun/*
+// @match        https://noitu.fun/*
+// @run-at       document-end
+// @grant        none
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    const FIREBASE_DB_URL = "https://khotu-fc3e7-default-rtdb.asia-southeast1.firebasedatabase.app";
+    const byFirst = new Map();
+    const trapSet = new Set();
+    let totalValidWords = 0;
+    let dictReady = false;
+
+    function normWord(w) {
+        return (w || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
+    function buildIndex(entries) {
+        byFirst.clear();
+        trapSet.clear();
+        const validSet = new Set();
+        for (const entry of entries) {
+            const word = (typeof entry === 'string') ? entry : entry.w;
+            const trap = (typeof entry === 'object' && entry) ? !!entry.trap : false;
+            if (!word) continue;
+            const norm = normWord(word);
+            const parts = norm.split(' ');
+            if (parts.length !== 2) continue;
+            validSet.add(norm);
+            if (trap) trapSet.add(norm);
+            const first = parts[0];
+            if (!byFirst.has(first)) byFirst.set(first, []);
+            byFirst.get(first).push(norm);
+        }
+        totalValidWords = validSet.size;
+    }
+
+    function loadWords() {
+        fetch(`${FIREBASE_DB_URL}/words.json`)
+            .then(r => r.json())
+            .then(data => {
+                const entries = data ? Object.values(data) : [];
+                buildIndex(entries);
+                dictReady = true;
+                updateDictStatus();
+                if (lastText) renderSuggestions(lastText);
+            })
+            .catch(() => {
+                dictReady = false;
+                updateDictStatus();
+            });
+    }
+
+    function updateDictStatus() {
+        const statusEl = document.getElementById('wd-status');
+        if (!statusEl) return;
+        if (dictReady) {
+            statusEl.textContent = `● ${totalValidWords.toLocaleString('vi-VN')}`;
+            statusEl.style.color = '#4ade80';
+        } else {
+            statusEl.textContent = '● Lỗi tải';
+            statusEl.style.color = '#f87171';
+        }
+    }
+
+    function isDeadEndWord(word, badWords) {
+        const ns = word.split(' ')[1];
+        const opts = byFirst.get(ns) || [];
+        return opts.filter(w => w !== word && !badWords.has(w) && !usedWords.has(w)).length === 0;
+    }
+
+    function isRiskyTrap(word, badWords) {
+        const ns = word.split(' ')[1];
+        const opts = byFirst.get(ns) || [];
+        const available = opts.filter(w => !badWords.has(w) && !usedWords.has(w));
+        if (!available.length) return null;
+        if (available.some(w => isDeadEndWord(w, badWords))) return 'risk-dead';
+        if (available.some(w => trapSet.has(w))) return 'risk-trap';
+        return null;
+    }
+
+    function loadBadWords() {
+        try {
+            const raw = localStorage.getItem('wd_bad_words');
+            return raw ? new Set(JSON.parse(raw)) : new Set();
+        } catch (e) { return new Set(); }
+    }
+    function saveBadWords(set) {
+        try { localStorage.setItem('wd_bad_words', JSON.stringify([...set])); } catch (e) {}
+    }
+    const badWords = loadBadWords();
+
+    // ===== Nền bảng: đen / trong suốt =====
+    let darkBg = (function () {
+        try {
+            const v = localStorage.getItem('wd_dark_bg');
+            return v === null ? true : v === '1';
+        } catch (e) { return true; }
+    })();
+    function saveDarkBg(on) {
+        try { localStorage.setItem('wd_dark_bg', on ? '1' : '0'); } catch (e) {}
+    }
+
+    function injectStyles() {
+        if (document.getElementById('wd-style-tag')) return;
+        const style = document.createElement('style');
+        style.id = 'wd-style-tag';
+        style.textContent = `
+            :root {
+                --wd-accent: #00e5c7;
+                --wd-accent-2: #00b8a0;
+                --wd-ok: #4ade80;
+                --wd-dead: #ff5c7a;
+                --wd-trap: #ff8c00;
+                --wd-risk: #ffd700;
+                --wd-riskdead: #c9a9ff;
+                --wd-radius: 14px;
+            }
+
+            #wd-mobile-panel {
+                position: fixed !important;
+                top: 8px !important;
+                left: 4% !important;
+                width: 92% !important;
+                max-width: 400px;
+                z-index: 9999999 !important;
+                border: 1px solid rgba(0,229,199,0.35) !important;
+                border-radius: var(--wd-radius) !important;
+                padding: 8px !important;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.02) inset !important;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                color: #fff !important;
+                box-sizing: border-box !important;
+                transition: background .2s ease, box-shadow .2s ease;
+            }
+            #wd-mobile-panel.dark-bg {
+                background: rgba(14, 15, 22, 0.72) !important;
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+            }
+            #wd-mobile-panel.transparent-bg {
+                background: transparent !important;
+                backdrop-filter: none;
+                -webkit-backdrop-filter: none;
+            }
+
+            #wd-header {
+                display: flex; justify-content: space-between; align-items: center;
+                margin-bottom: 6px; cursor: grab; user-select: none;
+                gap: 6px;
+            }
+            #wd-title {
+                font-size: 9.5px; letter-spacing: .07em; font-weight: 800;
+                color: rgba(255,255,255,0.35); text-transform: uppercase;
+                flex-shrink: 0;
+                display: flex; align-items: center; gap: 4px;
+            }
+            #wd-title::before {
+                content: ''; width: 5px; height: 5px; border-radius: 50%;
+                background: var(--wd-accent); box-shadow: 0 0 6px var(--wd-accent);
+                display: inline-block;
+            }
+            #wd-controls {
+                display: flex; align-items: center; gap: 3px;
+                flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+                max-width: 100%; -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+            #wd-controls::-webkit-scrollbar { display: none; }
+            .wd-btn {
+                border: none; border-radius: 7px; padding: 4px 7px; font-size: 10px;
+                font-weight: 700; cursor: pointer; transition: transform .12s ease, opacity .12s ease;
+                letter-spacing: .01em; white-space: nowrap; flex-shrink: 0;
+            }
+            #wd-toggle { flex-shrink: 0; }
+            #wd-status { flex-shrink: 0; }
+            .wd-btn:active { transform: scale(0.92); }
+            #wd-auto { background: rgba(255,255,255,0.07); color: #9aa5b1; }
+            #wd-auto.on { background: linear-gradient(135deg,#10b981,#059669); color: #fff; box-shadow: 0 0 10px rgba(16,185,129,.45); }
+            #wd-bg-toggle { background: rgba(255,255,255,0.07); color: #9aa5b1; font-size: 11px; padding: 4px 7px; }
+            #wd-clear { background: rgba(248,113,113,0.12); color: #f7a8a8; }
+            #wd-status { font-size: 9.5px; font-weight: 700; white-space: nowrap; color: rgba(255,255,255,0.4); padding: 0 2px; }
+            #wd-toggle {
+                background: linear-gradient(135deg,var(--wd-accent),var(--wd-accent-2)); color: #052018;
+                border-radius: 50%; width: 20px; height: 20px; font-size: 13px; font-weight: 900;
+                display: flex; align-items: center; justify-content: center; line-height: 1;
+                padding: 0;
+            }
+
+            #wd-mini-panel {
+                position: fixed !important;
+                top: 8px !important;
+                left: 50% !important;
+                transform: translateX(-50%);
+                z-index: 9999999 !important;
+                border: 1px solid rgba(0,229,199,0.4) !important;
+                border-radius: 999px !important;
+                padding: 7px 16px !important;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                display: none;
+                align-items: center;
+                gap: 6px;
+                cursor: pointer;
+                user-select: none;
+                transition: background .2s ease, box-shadow .2s ease, transform .1s ease;
+            }
+            #wd-mini-panel:active { transform: translateX(-50%) scale(0.96); }
+            #wd-mini-panel.show { display: flex; }
+            #wd-mini-panel.dark-bg {
+                background: rgba(14, 15, 22, 0.45) !important;
+                box-shadow: 0 6px 18px rgba(0,0,0,0.4) !important;
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+            }
+            #wd-mini-panel.transparent-bg {
+                background: transparent !important;
+                box-shadow: none !important;
+                backdrop-filter: none;
+                -webkit-backdrop-filter: none;
+            }
+            #wd-mini-word {
+                font-size: 15px; font-weight: 800; color: var(--wd-ok);
+                text-shadow: 0 0 10px rgba(74,222,128,0.4);
+                white-space: nowrap;
+            }
+            #wd-mini-hint {
+                font-size: 9px; color: rgba(255,255,255,0.35);
+                white-space: nowrap;
+            }
+
+            #wd-body { display: flex; flex-direction: column; gap: 6px; }
+
+            #wd-original-card {
+                background: rgba(0,229,199,0.07);
+                border: 1px solid rgba(0,229,199,0.2);
+                border-radius: 11px;
+                padding: 7px 10px;
+                display: flex; align-items: baseline; justify-content: center; gap: 6px;
+            }
+            #wd-original-label {
+                font-size: 9px; text-transform: uppercase; letter-spacing: .06em;
+                color: rgba(255,255,255,0.35); font-weight: 700;
+            }
+            #wd-original {
+                font-size: 16px; font-weight: 800; color: #fff;
+                letter-spacing: .01em;
+            }
+
+            #wd-legend {
+                display: flex; flex-wrap: wrap; gap: 5px 10px; justify-content: center;
+                font-size: 8.5px; color: rgba(255,255,255,0.35);
+            }
+            .wd-legend-item { display: flex; align-items: center; gap: 3px; }
+            .wd-legend-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+            #wd-suggest {
+                display: flex; flex-wrap: wrap; gap: 5px; justify-content: center;
+                max-height: 24vh; overflow-y: auto;
+                background: rgba(0,0,0,0.22);
+                border: 1px solid rgba(255,255,255,0.05);
+                border-radius: 11px; padding: 8px;
+            }
+            #wd-suggest::-webkit-scrollbar { width: 4px; }
+            #wd-suggest::-webkit-scrollbar-thumb { background: rgba(0,229,199,0.35); border-radius: 4px; }
+            .wd-sugg {
+                padding: 6px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700;
+                cursor: pointer; transition: transform .1s ease, filter .1s ease;
+                border-width: 1.25px; border-style: solid;
+                position: relative;
+            }
+            .wd-sugg:active { transform: scale(0.9); filter: brightness(1.2); }
+            .wd-empty-msg { font-size: 11.5px; padding: 5px; color: rgba(255,255,255,0.45); }
+            .wd-score-badge {
+                position: absolute; top: -6px; right: -4px;
+                background: rgba(0,0,0,0.8); color: #fff;
+                font-size: 8px; font-weight: 800; padding: 1px 4px;
+                border-radius: 6px; border: 1px solid rgba(255,255,255,0.18);
+            }
+
+            #wd-ai-row {
+                background: linear-gradient(135deg, rgba(16,185,129,0.14), rgba(0,180,255,0.09));
+                border: 1px solid rgba(16,185,129,0.35);
+                border-radius: 11px;
+                padding: 9px 10px;
+                text-align: center;
+            }
+            #wd-ai-label {
+                font-size: 9px; text-transform: uppercase; letter-spacing: .07em;
+                color: rgba(255,255,255,0.4); margin-bottom: 3px; font-weight: 700;
+                display: flex; align-items: center; justify-content: center; gap: 5px;
+            }
+            #wd-ai-best {
+                font-size: 15px; font-weight: 800; color: var(--wd-ok);
+                text-shadow: 0 0 10px rgba(74,222,128,0.4);
+                margin-bottom: 2px;
+                cursor: pointer;
+            }
+            #wd-ai-reason {
+                font-size: 10.5px; color: rgba(255,255,255,0.55);
+                line-height: 1.3;
+            }
+            #wd-ai-best:active { transform: scale(0.96); }
+            #wd-ai-alt {
+                margin-top: 5px; padding-top: 5px;
+                border-top: 1px dashed rgba(255,255,255,0.12);
+                font-size: 9.5px; color: rgba(255,255,255,0.45);
+                display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;
+            }
+            .wd-ai-alt-item {
+                background: rgba(255,255,255,0.05);
+                padding: 3px 7px; border-radius: 999px;
+                cursor: pointer; font-weight: 700;
+            }
+            .wd-ai-alt-item:active { transform: scale(0.92); }
+
+            #wd-preview {
+                position: fixed; z-index: 10000000;
+                background: linear-gradient(160deg, rgba(18,19,28,0.97), rgba(9,10,16,0.97));
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(0,229,199,0.25);
+                border-radius: 11px; padding: 9px 11px;
+                font-size: 11.5px; color: #e8e8e8; max-width: 240px; max-height: 210px;
+                overflow-y: auto; box-shadow: 0 14px 30px rgba(0,0,0,0.55);
+                line-height: 1.5;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function applyBgMode(panel) {
+        if (!panel) panel = document.getElementById('wd-mobile-panel');
+        if (panel) {
+            panel.classList.toggle('dark-bg', darkBg);
+            panel.classList.toggle('transparent-bg', !darkBg);
+        }
+
+        const miniPanel = document.getElementById('wd-mini-panel');
+        if (miniPanel) {
+            miniPanel.classList.toggle('dark-bg', darkBg);
+            miniPanel.classList.toggle('transparent-bg', !darkBg);
+        }
+
+        const btn = document.getElementById('wd-bg-toggle');
+        if (btn) {
+            btn.textContent = darkBg ? '⬛' : '⬜';
+            btn.title = darkBg ? 'Nền đen (chạm để chuyển trong suốt)' : 'Nền trong suốt (chạm để chuyển đen)';
+        }
+    }
+
+    // ===== Chế độ phân tích sâu (Deep AI) =====
+    let deepModeOn = (function () {
+        try {
+            const v = localStorage.getItem('wd_deep_mode');
+            return v === null ? true : v === '1';
+        } catch (e) { return true; }
+    })();
+    function saveDeepMode(on) {
+        try { localStorage.setItem('wd_deep_mode', on ? '1' : '0'); } catch (e) {}
+    }
+    const deepDepth = 4;
+
+    function initUI() {
+        if (document.getElementById('wd-mobile-panel')) return;
+        injectStyles();
+
+        const panel = document.createElement('div');
+        panel.id = 'wd-mobile-panel';
+
+        panel.innerHTML = `
+            <div id="wd-header">
+                <div id="wd-title">Nối Từ</div>
+                <div id="wd-controls">
+                    <button id="wd-bg-toggle" class="wd-btn">⬛</button>
+                    <button id="wd-auto" class="wd-btn">Auto</button>
+                    <button id="wd-clear" class="wd-btn">Xóa</button>
+                    <div id="wd-status">…</div>
+                    <button id="wd-toggle">−</button>
+                </div>
+            </div>
+            <div id="wd-body">
+                <div id="wd-original-card">
+                    <span id="wd-original-label">Từ hiện tại</span>
+                    <span id="wd-original">Chờ từ...</span>
+                </div>
+                <div id="wd-legend">
+                    <div class="wd-legend-item"><span class="wd-legend-dot" style="background:#ff5c7a;"></span>Cụt</div>
+                    <div class="wd-legend-item"><span class="wd-legend-dot" style="background:#ff8c00;"></span>Bẫy</div>
+                    <div class="wd-legend-item"><span class="wd-legend-dot" style="background:#00ffcc;"></span>Thường</div>
+                    <div class="wd-legend-item"><span class="wd-legend-dot" style="background:#ffd700;"></span>Tránh</div>
+                </div>
+                <div id="wd-suggest"></div>
+
+                <div id="wd-ai-row">
+                    <div id="wd-ai-label">🤖 AI Gợi Ý Tốt Nhất</div>
+                    <div id="wd-ai-best">Đang phân tích...</div>
+                    <div id="wd-ai-reason"></div>
+                    <div id="wd-ai-alt"></div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(panel);
+        applyBgMode(panel);
+
+        const miniPanel = document.createElement('div');
+        miniPanel.id = 'wd-mini-panel';
+        miniPanel.innerHTML = `
+            <div id="wd-mini-word">...</div>
+            <div id="wd-mini-hint">chạm để mở</div>
+        `;
+        document.body.appendChild(miniPanel);
+        applyBgMode(panel);
+
+        attachDrag(panel, panel.querySelector('#wd-header'));
+        attachToggle(panel, miniPanel);
+        attachBgToggle(panel);
+        attachAutoButton(panel);
+        attachClearButton(panel);
+        attachMiniPanel(miniPanel, panel);
+    }
+
+    function loadPos() {
+        try {
+            const raw = localStorage.getItem('wd_panel_pos');
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    }
+    function savePos(left, top) {
+        try { localStorage.setItem('wd_panel_pos', JSON.stringify({ left, top })); } catch (e) {}
+    }
+    function loadCollapsed() {
+        try { return localStorage.getItem('wd_panel_collapsed') === '1'; } catch (e) { return false; }
+    }
+    function saveCollapsed(on) {
+        try { localStorage.setItem('wd_panel_collapsed', on ? '1' : '0'); } catch (e) {}
+    }
+
+    let ultraMini = (function () {
+        try { return localStorage.getItem('wd_ultra_mini') === '1'; } catch (e) { return false; }
+    })();
+    function saveUltraMini(on) {
+        try { localStorage.setItem('wd_ultra_mini', on ? '1' : '0'); } catch (e) {}
+    }
+
+    function setUltraMini(on, panel, miniPanel) {
+        ultraMini = on;
+        saveUltraMini(on);
+        if (!panel) panel = document.getElementById('wd-mobile-panel');
+        if (!miniPanel) miniPanel = document.getElementById('wd-mini-panel');
+        if (!panel || !miniPanel) return;
+        panel.style.display = on ? 'none' : 'block';
+        miniPanel.classList.toggle('show', on);
+        if (on) updateMiniWord();
+    }
+
+    function updateMiniWord() {
+        const miniWordEl = document.getElementById('wd-mini-word');
+        if (!miniWordEl) return;
+
+        if (!currentBestMove || !currentBestMove.word) {
+            miniWordEl.textContent = '✗ Hết nước';
+            miniWordEl.style.color = '#f87171';
+            return;
+        }
+
+        const second = currentBestMove.word.split(' ')[1];
+        const colorMap = {
+            dead: '#ff5c7a',
+            trap: '#ff8c00',
+            ok: '#4ade80',
+            'risk-trap': '#ffd700',
+            'risk-dead': '#c9a9ff'
+        };
+        const prefixMap = {
+            dead: '✓ ',
+            trap: '★ ',
+            ok: '',
+            'risk-trap': '⚠ ',
+            'risk-dead': '⚠ '
+        };
+        miniWordEl.textContent = (prefixMap[currentBestMove.kind] || '') + second;
+        miniWordEl.style.color = colorMap[currentBestMove.kind] || '#4ade80';
+    }
+
+    function attachToggle(panel, miniPanel) {
+        const toggleBtn = panel.querySelector('#wd-toggle');
+        const bodyEl = panel.querySelector('#wd-body');
+        let collapsed = loadCollapsed();
+        function apply() {
+            bodyEl.style.display = collapsed ? 'none' : 'block';
+            toggleBtn.textContent = collapsed ? '+' : '−';
+            saveCollapsed(collapsed);
+        }
+        apply();
+
+        let pressTimer = null;
+        let longPressed = false;
+
+        toggleBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            if (longPressed) { longPressed = false; return; }
+            collapsed = !collapsed;
+            apply();
+        });
+        toggleBtn.addEventListener('touchstart', e => {
+            e.stopPropagation();
+            longPressed = false;
+            pressTimer = setTimeout(() => {
+                longPressed = true;
+                setUltraMini(true, panel, miniPanel);
+            }, 480);
+        }, { passive: true });
+        toggleBtn.addEventListener('touchend', () => clearTimeout(pressTimer));
+        toggleBtn.addEventListener('touchmove', () => clearTimeout(pressTimer));
+        toggleBtn.addEventListener('mousedown', () => {
+            longPressed = false;
+            pressTimer = setTimeout(() => {
+                longPressed = true;
+                setUltraMini(true, panel, miniPanel);
+            }, 480);
+        });
+        toggleBtn.addEventListener('mouseup', () => clearTimeout(pressTimer));
+
+        if (ultraMini) setUltraMini(true, panel, miniPanel);
+    }
+
+    function attachMiniPanel(miniPanel, panel) {
+        let pressTimer = null;
+        let longPressed = false;
+
+        function restore() {
+            setUltraMini(false, panel, miniPanel);
+        }
+
+        miniPanel.addEventListener('touchstart', () => {
+            longPressed = false;
+            pressTimer = setTimeout(() => {
+                longPressed = true;
+                restore();
+            }, 380);
+        }, { passive: true });
+        miniPanel.addEventListener('touchend', () => clearTimeout(pressTimer));
+        miniPanel.addEventListener('touchmove', () => clearTimeout(pressTimer));
+
+        miniPanel.addEventListener('mousedown', () => {
+            longPressed = false;
+            pressTimer = setTimeout(() => {
+                longPressed = true;
+                restore();
+            }, 380);
+        });
+        miniPanel.addEventListener('mouseup', () => clearTimeout(pressTimer));
+
+        // Chạm nhanh (không giữ) vào mini panel = gửi luôn từ điểm cao nhất
+        miniPanel.addEventListener('click', () => {
+            if (longPressed) { longPressed = false; return; }
+            const bestEl = document.getElementById('wd-ai-best');
+            if (bestEl && bestEl.onclick) bestEl.onclick();
+        });
+    }
+
+    function attachBgToggle(panel) {
+        const btn = panel.querySelector('#wd-bg-toggle');
+        btn.addEventListener('click', e => {
+            e.stopPropagation();
+            darkBg = !darkBg;
+            saveDarkBg(darkBg);
+            applyBgMode(panel);
+        });
+    }
+
+    function attachDrag(panel, header) {
+        const saved = loadPos();
+        if (saved && saved.left && saved.top) {
+            panel.style.setProperty('left', saved.left, 'important');
+            panel.style.setProperty('top', saved.top, 'important');
+            panel.style.setProperty('right', 'auto', 'important');
+        }
+
+        let dragging = false, ox = 0, oy = 0;
+        function start(x, y, target) {
+            if (target.closest('#wd-toggle') || target.closest('.wd-btn')) return false;
+            const rect = panel.getBoundingClientRect();
+            ox = x - rect.left;
+            oy = y - rect.top;
+            panel.style.setProperty('left', rect.left + 'px', 'important');
+            panel.style.setProperty('top', rect.top + 'px', 'important');
+            panel.style.setProperty('right', 'auto', 'important');
+            return true;
+        }
+        function move(x, y) {
+            const w = panel.offsetWidth, h = panel.offsetHeight;
+            let left = Math.max(4, Math.min(window.innerWidth - w - 4, x - ox));
+            let top = Math.max(4, Math.min(window.innerHeight - h - 4, y - oy));
+            panel.style.setProperty('left', left + 'px', 'important');
+            panel.style.setProperty('top', top + 'px', 'important');
+            savePos(panel.style.left, panel.style.top);
+        }
+        header.addEventListener('mousedown', e => { dragging = start(e.clientX, e.clientY, e.target); });
+        document.addEventListener('mousemove', e => { if (dragging) move(e.clientX, e.clientY); });
+        document.addEventListener('mouseup', () => dragging = false);
+        header.addEventListener('touchstart', e => {
+            dragging = start(e.touches[0].clientX, e.touches[0].clientY, e.target);
+        }, { passive: true });
+        panel.addEventListener('touchmove', e => {
+            if (!dragging) return;
+            move(e.touches[0].clientX, e.touches[0].clientY);
+            e.preventDefault();
+        }, { passive: false });
+        panel.addEventListener('touchend', () => dragging = false);
+    }
+
+    let autoEnabled = (function () {
+        try { return localStorage.getItem('wd_auto') === '1'; } catch (e) { return false; }
+    })();
+    function saveAuto(on) {
+        try { localStorage.setItem('wd_auto', on ? '1' : '0'); } catch (e) {}
+    }
+
+    let lastSubmitted = null;
+    let autoTimer = null;
+    const usedWords = new Set();
+    let lastSkippedWord = null;
+    let skipTimer = null;
+    let lastTrapAlertKey = null;
+
+    // Bắt trường hợp người dùng tự gõ tay và gửi (không qua fillAndSubmit)
+    function watchManualSubmit() {
+        document.addEventListener('keydown', e => {
+            if (e.key !== 'Enter') return;
+            const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
+            if (!input || e.target !== input) return;
+            const norm = normWord(input.value);
+            if (norm && norm.split(' ').length === 2) {
+                usedWords.add(norm);
+            }
+        }, true);
+
+        document.addEventListener('click', e => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+            const isSubmitBtn =
+                btn.matches('button[class*="submitBtn"], button[class*="submit"]') ||
+                btn.querySelector('svg') ||
+                /gửi|submit|ok|xác nhận|gửi từ/i.test((btn.textContent || '').trim());
+            if (!isSubmitBtn) return;
+            const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
+            if (!input) return;
+            const norm = normWord(input.value);
+            if (norm && norm.split(' ').length === 2) {
+                usedWords.add(norm);
+            }
+        }, true);
+    }
+    watchManualSubmit();
+
+    // Tự động xóa phiên (usedWords) mỗi 45 giây để tránh tồn đọng sai
+    setInterval(() => {
+        usedWords.clear();
+        if (lastText) renderSuggestions(lastText);
+    }, 45000);
+
+    function sendSkip() {
+        const skipBtn = Array.from(document.querySelectorAll('button')).find(b =>
+            /bỏ qua|skip|pass/i.test((b.textContent || '').trim())
+        );
+        if (skipBtn) {
+            skipBtn.click();
+        } else {
+            const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
+            const targets = [input, document].filter(Boolean);
+            targets.forEach(target => {
+                target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
+                target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
+            });
+        }
+    }
+
+    function attachAutoButton(panel) {
+        const btn = panel.querySelector('#wd-auto');
+        function apply() {
+            btn.classList.toggle('on', autoEnabled);
+            btn.textContent = autoEnabled ? 'Tự động: Bật' : 'Tự động';
+        }
+        apply();
+        btn.addEventListener('click', e => {
+            e.stopPropagation();
+            autoEnabled = !autoEnabled;
+            saveAuto(autoEnabled);
+            apply();
+            if (autoEnabled && lastText) tryAutoPlay();
+        });
+    }
+
+    function fillAndSubmit(full) {
+        lastSubmitted = full;
+        usedWords.add(full);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(full).catch(() => {});
+        }
+        const input = document.querySelector('input.word-link-answer-input, input[class*="word-link-answer"], input[type="text"]');
+        if (!input) return;
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        if (setter) setter.call(input, full);
+        else input.value = full;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+
+        setTimeout(() => {
+            let sendBtn =
+                document.querySelector('button[class*="submitBtn"], button[class*="submit"]') ||
+                Array.from(document.querySelectorAll('button')).find(b =>
+                    b.querySelector('svg') ||
+                    /gửi|submit|ok|xác nhận|gửi từ/i.test((b.textContent || '').trim())
+                );
+            if (sendBtn) {
+                sendBtn.click();
+            } else {
+                ['keydown', 'keypress', 'keyup'].forEach(type => {
+                    input.dispatchEvent(new KeyboardEvent(type, {
+                        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
+                    }));
+                });
+            }
+        }, 60);
+    }
+
+    function tryAutoPlay() {
+        if (!autoEnabled) return;
+        clearTimeout(autoTimer);
+        if (!currentBestMove || !currentBestMove.word) return;
+        const full = currentBestMove.word;
+        const delay = 250 + Math.random() * 250;
+        autoTimer = setTimeout(() => {
+            if (!autoEnabled) return;
+            fillAndSubmit(full);
+        }, delay);
+    }
+
+    function attachClearButton(panel) {
+        const btn = panel.querySelector('#wd-clear');
+        btn.addEventListener('click', e => {
+            e.stopPropagation();
+            usedWords.clear();
+            badWords.clear();
+            saveBadWords(badWords);
+            lastSkippedWord = null;
+            clearTimeout(autoTimer);
+            clearTimeout(skipTimer);
+            const statusEl = document.getElementById('wd-status');
+            if (statusEl) {
+                statusEl.textContent = 'Đã xóa';
+                statusEl.style.color = '#fbbf24';
+                setTimeout(updateDictStatus, 1200);
+            }
+            if (lastText) renderSuggestions(lastText);
+        });
+    }
+
+    function chip(full, kind, scoreLabel) {
+        const second = full.split(' ')[1];
+        const styles = {
+            trap: { bg: 'rgba(255,140,0,.20)', border: '#ff8c00', color: '#ffcc80', mark: '★ ' },
+            dead: { bg: 'rgba(255,92,122,.16)', border: '#ff5c7a', color: '#ffb3c1', mark: '✓ ' },
+            'risk-trap': { bg: 'rgba(255,215,0,.18)', border: '#ffd700', color: '#fff3b0', mark: '✗ ' },
+            'risk-dead': { bg: 'rgba(147,112,219,.18)', border: '#9370db', color: '#d4c1ff', mark: '✗ ' },
+            ok:   { bg: 'rgba(0,255,204,.10)', border: '#00ffcc', color: '#e6fffb', mark: '' }
+        };
+        const s = styles[kind] || styles.ok;
+        const badge = (scoreLabel !== undefined && scoreLabel !== null)
+            ? `<span class="wd-score-badge">${scoreLabel}</span>` : '';
+        return `<div class="wd-sugg" data-full="${full}" data-kind="${kind}"
+            style="background:${s.bg};border-color:${s.border};color:${s.color};">
+            ${s.mark}${second}${badge}
+        </div>`;
+    }
+
+    // ===== AI ưu tiên tuyệt đối Cụt (bản nhanh, dùng khi tắt Deep mode) =====
+    function pickBestMove(traps, deads, oks, riskTraps, riskDeads) {
+        if (deads.length) {
+            return {
+                word: deads[0],
+                kind: 'dead',
+                reason: '✓ Cụt đường — ép đối thủ hết nước nối (ưu tiên cao nhất)'
+            };
+        }
+        if (traps.length) {
+            return {
+                word: traps[0],
+                kind: 'trap',
+                reason: '★ Bẫy — đối thủ dễ bị kẹt'
+            };
+        }
+        if (oks.length) {
+            return {
+                word: oks[0],
+                kind: 'ok',
+                reason: 'Thường — nước đi an toàn, giữ thế'
+            };
+        }
+        if (riskTraps.length) {
+            return {
+                word: riskTraps[0],
+                kind: 'risk-trap',
+                reason: '⚠ Risk Bẫy — chỉ dùng khi hết lựa chọn tốt'
+            };
+        }
+        if (riskDeads.length) {
+            return {
+                word: riskDeads[0],
+                kind: 'risk-dead',
+                reason: '⚠ Risk Cụt — nguy hiểm, tránh nếu được'
+            };
+        }
+        return null;
+    }
+
+    // ===== AI SIÊU PHÂN TÍCH CHIẾN THUẬT (Minimax độ sâu N + đánh giá điểm) =====
+
+    // Tính điểm "sức khỏe" của một từ: mô phỏng các lượt tiếp theo giữa 2 bên
+    function evaluateWordStrength(word, badWordsSet, usedSet, depth, isMyTurn) {
+        if (depth <= 0) return 0;
+
+        const ns = word.split(' ')[1];
+        const opts = (byFirst.get(ns) || []).filter(w =>
+            w !== word && !badWordsSet.has(w) && !usedSet.has(w)
+        );
+
+        // Không còn nước đi -> cực tốt nếu là lượt đối thủ (họ bí), cực xấu nếu là lượt mình (mình bí)
+        if (opts.length === 0) {
+            return isMyTurn ? -1000 : 1000;
+        }
+
+        let bestScore = isMyTurn ? -Infinity : Infinity;
+
+        // Giới hạn số nhánh xét để tránh lag (top 6 theo heuristic nhanh)
+        const candidates = opts
+            .map(w => ({
+                w,
+                trap: trapSet.has(w) ? 1 : 0,
+                deadImmediate: isDeadEndWord(w, badWordsSet) ? 1 : 0
+            }))
+            .sort((a, b) => (b.deadImmediate - a.deadImmediate) || (b.trap - a.trap))
+            .slice(0, 6);
+
+        for (const cand of candidates) {
+            const newUsed = new Set(usedSet);
+            newUsed.add(cand.w);
+
+            let score = 0;
+            if (cand.deadImmediate) {
+                score = isMyTurn ? 900 : -900;
+            } else if (cand.trap) {
+                score = isMyTurn ? 300 : -300;
+            }
+
+            score += evaluateWordStrength(cand.w, badWordsSet, newUsed, depth - 1, !isMyTurn);
+
+            if (isMyTurn) {
+                bestScore = Math.max(bestScore, score);
+            } else {
+                bestScore = Math.min(bestScore, score);
+            }
+        }
+
+        return bestScore;
+    }
+
+    // Chấm điểm tổng thể cho một nước đi ứng viên của MÌNH
+    function scoreMove(word, badWordsSet, usedSet, depth) {
+        const newUsed = new Set(usedSet);
+        newUsed.add(word);
+
+        // Sau khi mình đi "word", đối thủ đi tiếp -> isMyTurn=false
+        const depthScore = evaluateWordStrength(word, badWordsSet, newUsed, depth, false);
+
+        let baseScore = 0;
+        if (isDeadEndWord(word, badWordsSet)) baseScore += 500;
+        if (trapSet.has(word)) baseScore += 150;
+
+        const ns = word.split(' ')[1];
+        const nextOpts = (byFirst.get(ns) || []).filter(w => w !== word && !badWordsSet.has(w) && !newUsed.has(w));
+        const scarcityBonus = nextOpts.length === 0 ? 400 : Math.max(0, 20 - nextOpts.length) * 5;
+
+        return baseScore + scarcityBonus + depthScore;
+    }
+
+    // Chọn nước đi tốt nhất bằng phân tích sâu, kèm top 3 lựa chọn thay thế
+    function pickBestMoveDeep(traps, deads, oks, riskTraps, riskDeads, badWordsSet, depth) {
+        const allCandidates = [...deads, ...traps, ...oks, ...riskTraps, ...riskDeads];
+        if (!allCandidates.length) return null;
+
+        // Giới hạn số ứng viên phân tích sâu (top 10 theo heuristic nhanh) để tránh treo máy
+        const quickSorted = allCandidates
+            .map(w => ({
+                w,
+                quick: (isDeadEndWord(w, badWordsSet) ? 1000 : 0) + (trapSet.has(w) ? 200 : 0)
+            }))
+            .sort((a, b) => b.quick - a.quick)
+            .slice(0, 10);
+
+        const scored = quickSorted.map(cand => ({
+            w: cand.w,
+            score: scoreMove(cand.w, badWordsSet, usedWords, depth),
+            immediateDead: isDeadEndWord(cand.w, badWordsSet)
+        }));
+
+        // Cụt ngay lập tức luôn thắng tuyệt đối, không so điểm depth với các phương án khác
+        const immediateDeads = scored.filter(s => s.immediateDead).sort((a, b) => b.score - a.score);
+        const rest = scored.filter(s => !s.immediateDead).sort((a, b) => b.score - a.score);
+        const ranked = immediateDeads.length ? [...immediateDeads, ...rest] : rest;
+
+        if (!ranked.length) return null;
+
+        const best = ranked[0].w;
+        const bestScore = ranked[0].score;
+        const alternatives = ranked.slice(1, 4); // top 3 lựa chọn thay thế
+
+        let kind = 'ok';
+        if (deads.includes(best)) kind = 'dead';
+        else if (traps.includes(best)) kind = 'trap';
+        else if (riskTraps.includes(best)) kind = 'risk-trap';
+        else if (riskDeads.includes(best)) kind = 'risk-dead';
+
+        const reasonMap = {
+            dead: `✓ Cụt đường ngay — điểm chiến thuật: ${bestScore.toFixed(0)}`,
+            trap: `★ Bẫy tốt — phân tích ${depth} lượt tiếp theo, điểm: ${bestScore.toFixed(0)}`,
+            ok: `Nước an toàn — dẫn đối thủ vào thế bí sau vài lượt (điểm: ${bestScore.toFixed(0)})`,
+            'risk-trap': `⚠ Có rủi ro nhưng vẫn tối ưu nhất hiện có (điểm: ${bestScore.toFixed(0)})`,
+            'risk-dead': `⚠ Nguy hiểm — cân nhắc kỹ (điểm: ${bestScore.toFixed(0)})`
+        };
+
+        return {
+            word: best,
+            kind,
+            reason: reasonMap[kind],
+            score: bestScore,
+            alternatives // [{w, score}, ...]
+        };
+    }
+
+    function kindOfWord(word, traps, deads, riskTraps, riskDeads) {
+        if (deads.includes(word)) return 'dead';
+        if (traps.includes(word)) return 'trap';
+        if (riskTraps.includes(word)) return 'risk-trap';
+        if (riskDeads.includes(word)) return 'risk-dead';
+        return 'ok';
+    }
+
+    let currentBestMove = null;
+
+    function updateAISuggestion(best) {
+        currentBestMove = best;
+        const bestEl = document.getElementById('wd-ai-best');
+        const reasonEl = document.getElementById('wd-ai-reason');
+        const altEl = document.getElementById('wd-ai-alt');
+        if (!bestEl || !reasonEl || !altEl) return;
+
+        if (!best) {
+            bestEl.textContent = 'Không còn nước đi';
+            bestEl.style.color = '#f87171';
+            reasonEl.textContent = '';
+            altEl.innerHTML = '';
+            bestEl.onclick = null;
+            return;
+        }
+
+        const second = best.word.split(' ')[1];
+        const colorMap = {
+            dead: '#ff5c7a',
+            trap: '#ff8c00',
+            ok: '#4ade80',
+            'risk-trap': '#ffd700',
+            'risk-dead': '#c9a9ff'
+        };
+        bestEl.textContent = second;
+        bestEl.style.color = colorMap[best.kind] || '#4ade80';
+        reasonEl.textContent = best.reason;
+
+        bestEl.onclick = () => {
+            fillAndSubmit(best.word);
+            bestEl.style.background = 'linear-gradient(135deg,#10b981,#059669)';
+            bestEl.style.color = '#fff';
+            bestEl.style.borderRadius = '8px';
+            bestEl.style.padding = '2px 10px';
+        };
+
+        updateMiniWord();
+
+        // Hiển thị top lựa chọn thay thế (nếu có, từ chế độ Deep)
+        if (best.alternatives && best.alternatives.length) {
+            altEl.innerHTML = `<span style="opacity:.6;">Khác:</span>` + best.alternatives.map(a => {
+                const w2 = a.w.split(' ')[1];
+                return `<span class="wd-ai-alt-item" data-full="${a.w}">${w2} (${a.score.toFixed(0)})</span>`;
+            }).join('');
+            altEl.querySelectorAll('.wd-ai-alt-item').forEach(el => {
+                el.onclick = () => fillAndSubmit(el.dataset.full);
+            });
+        } else {
+            altEl.innerHTML = '';
+        }
+    }
+
+    function renderSuggestions(text) {
+        const box = document.getElementById('wd-suggest');
+        if (!box) return;
+
+        const preview = document.getElementById('wd-preview');
+        if (preview) preview.style.display = 'none';
+
+        if (!dictReady) {
+            box.innerHTML = `<div class="wd-empty-msg" style="color:#fbbf24;">Đang tải kho từ...</div>`;
+            updateAISuggestion(null);
+            updateMiniWord();
+            return;
+        }
+
+        const norm = normWord(text);
+        const parts = norm.split(' ');
+        if (parts.length !== 2) {
+            box.innerHTML = `<div class="wd-empty-msg">Từ không hợp lệ (2 âm tiết)</div>`;
+            updateAISuggestion(null);
+            updateMiniWord();
+            return;
+        }
+
+        const key = parts[1];
+        const available = (byFirst.get(key) || []).filter(w => w !== norm && !badWords.has(w) && !usedWords.has(w));
+
+        if (!available.length) {
+            box.innerHTML = `<div class="wd-empty-msg" style="color:#f87171;">Hết từ nối cho "${key}"</div>`;
+            updateAISuggestion(null);
+            updateMiniWord();
+            if (lastTrapAlertKey !== norm) {
+                lastTrapAlertKey = norm;
+            }
+            if (autoEnabled && lastSkippedWord !== norm) {
+                lastSkippedWord = norm;
+                clearTimeout(skipTimer);
+                skipTimer = setTimeout(() => {
+                    if (autoEnabled && lastText && normWord(lastText) === norm) {
+                        sendSkip();
+                    }
+                }, 300 + Math.random() * 300);
+            }
+            return;
+        }
+
+        const traps = [], deads = [], riskTraps = [], riskDeads = [], oks = [];
+        available.forEach(w => {
+            if (trapSet.has(w)) traps.push(w);
+            else if (isDeadEndWord(w, badWords)) deads.push(w);
+            else {
+                const risk = isRiskyTrap(w, badWords);
+                if (risk === 'risk-trap') riskTraps.push(w);
+                else if (risk === 'risk-dead') riskDeads.push(w);
+                else oks.push(w);
+            }
+        });
+
+        const best = deepModeOn
+            ? pickBestMoveDeep(traps, deads, oks, riskTraps, riskDeads, badWords, deepDepth)
+            : pickBestMove(traps, deads, oks, riskTraps, riskDeads);
+        updateAISuggestion(best);
+
+        // Thứ tự hiển thị: Cụt → Bẫy → Thường → Risk
+        const lim = 14;
+        if (deepModeOn) {
+            // Gắn điểm chiến thuật nhanh (heuristic, không đệ quy sâu) lên từng chip để tham khảo
+            const withScore = (w, kind) => {
+                const isBest = best && best.word === w;
+                const altHit = best && best.alternatives && best.alternatives.find(a => a.w === w);
+                const scoreLabel = isBest
+                    ? Math.round(best.score)
+                    : (altHit ? Math.round(altHit.score) : null);
+                return chip(w, kind, scoreLabel);
+            };
+            box.innerHTML =
+                deads.slice(0, lim).map(w => withScore(w, 'dead')).join('') +
+                traps.slice(0, lim).map(w => withScore(w, 'trap')).join('') +
+                oks.slice(0, lim).map(w => withScore(w, 'ok')).join('') +
+                riskTraps.slice(0, lim).map(w => withScore(w, 'risk-trap')).join('') +
+                riskDeads.slice(0, lim).map(w => withScore(w, 'risk-dead')).join('');
+        } else {
+            box.innerHTML =
+                deads.slice(0, lim).map(w => chip(w, 'dead')).join('') +
+                traps.slice(0, lim).map(w => chip(w, 'trap')).join('') +
+                oks.slice(0, lim).map(w => chip(w, 'ok')).join('') +
+                riskTraps.slice(0, lim).map(w => chip(w, 'risk-trap')).join('') +
+                riskDeads.slice(0, lim).map(w => chip(w, 'risk-dead')).join('');
+        }
+
+        if (traps.length && lastTrapAlertKey !== norm) {
+            lastTrapAlertKey = norm;
+        }
+
+        box.querySelectorAll('.wd-sugg').forEach(el => {
+            let pressTimer = null;
+            let longPressed = false;
+
+            function showPreview() {
+                longPressed = true;
+                const full = el.dataset.full;
+                const nextKey = full.split(' ')[1];
+                const nextList = (byFirst.get(nextKey) || []).filter(w => !badWords.has(w) && !usedWords.has(w));
+
+                let preview = document.getElementById('wd-preview');
+                if (!preview) {
+                    preview = document.createElement('div');
+                    preview.id = 'wd-preview';
+                    document.body.appendChild(preview);
+                }
+
+                if (!nextList.length) {
+                    preview.innerHTML = `<div style="color:#f87171;">Hết từ nối sau "<b>${nextKey}</b>"</div>`;
+                } else {
+                    const nTraps = [], nDeads = [], nRiskTraps = [], nRiskDeads = [], nOks = [];
+                    nextList.forEach(w => {
+                        if (trapSet.has(w)) nTraps.push(w);
+                        else if (isDeadEndWord(w, badWords)) nDeads.push(w);
+                        else {
+                            const risk = isRiskyTrap(w, badWords);
+                            if (risk === 'risk-dead') nRiskDeads.push(w);
+                            else if (risk === 'risk-trap') nRiskTraps.push(w);
+                            else nOks.push(w);
+                        }
+                    });
+                    let html = `<div style="font-weight:800;color:#00ffcc;margin-bottom:5px;">Sau "${nextKey}" (${nextList.length})</div>`;
+                    if (nDeads.length) html += `<div style="color:#ff5c7a;margin-top:3px;font-weight:700;">✓ Cụt</div>` + nDeads.slice(0, 6).map(w => `<div>• ${w.split(' ')[1]}</div>`).join('');
+                    if (nTraps.length) html += `<div style="color:#ff8c00;margin-top:3px;font-weight:700;">★ Bẫy</div>` + nTraps.slice(0, 8).map(w => `<div>• ${w.split(' ')[1]}</div>`).join('');
+                    if (nOks.length) html += `<div style="color:#7bf5e0;margin-top:3px;font-weight:700;">Thường</div>` + nOks.slice(0, 10).map(w => `<div>• ${w.split(' ')[1]}</div>`).join('');
+                    if (nRiskTraps.length) html += `<div style="color:#ffd700;margin-top:3px;font-weight:700;">✗ Tránh (bẫy)</div>` + nRiskTraps.slice(0, 6).map(w => `<div>• ${w.split(' ')[1]}</div>`).join('');
+                    if (nRiskDeads.length) html += `<div style="color:#c9a9ff;margin-top:3px;font-weight:700;">✗ Tránh (cụt)</div>` + nRiskDeads.slice(0, 6).map(w => `<div>• ${w.split(' ')[1]}</div>`).join('');
+                    preview.innerHTML = html;
+                }
+
+                const rect = el.getBoundingClientRect();
+                preview.style.display = 'block';
+                preview.style.left = Math.min(rect.left, window.innerWidth - 260) + 'px';
+                preview.style.top = (rect.bottom + 6) + 'px';
+            }
+
+            function hidePreview() {
+                const preview = document.getElementById('wd-preview');
+                if (preview) preview.style.display = 'none';
+            }
+
+            el.addEventListener('mouseenter', showPreview);
+            el.addEventListener('mouseleave', hidePreview);
+
+            el.addEventListener('touchstart', () => {
+                longPressed = false;
+                pressTimer = setTimeout(showPreview, 380);
+            }, { passive: true });
+            el.addEventListener('touchend', () => {
+                clearTimeout(pressTimer);
+                if (longPressed) {
+                    hidePreview();
+                    return;
+                }
+            });
+            el.addEventListener('touchmove', () => {
+                clearTimeout(pressTimer);
+            });
+
+            el.onclick = () => {
+                if (longPressed) { longPressed = false; return; }
+                const full = el.dataset.full;
+                fillAndSubmit(full);
+                el.style.background = 'linear-gradient(135deg,#10b981,#059669)';
+                el.style.color = '#fff';
+                hidePreview();
+            };
+        });
+
+        if (autoEnabled) tryAutoPlay();
+    }
+
+    let lastText = "";
+
+    function scanWord() {
+        initUI();
+
+        const allTextElements = document.querySelectorAll('*');
+        let matchedText = "";
+
+        for (let el of allTextElements) {
+            if (el.closest('#wd-mobile-panel')) continue;
+            if (el.children.length === 0 && el.innerText) {
+                const text = el.innerText.trim();
+
+                if (
+                    text.length >= 2 &&
+                    !text.includes('\n') &&
+                    !['ĐIỂM', 'Đối thủ', 'Bỏ qua', 'ĐÃ NỐI', 'esc', 'Bot', 'Chơi', 'nhóm'].some(k => text.includes(k)) &&
+                    !/^\d+$/.test(text)
+                ) {
+                    const style = window.getComputedStyle(el);
+                    if (parseFloat(style.fontSize) >= 20 && el.getBoundingClientRect().height > 0) {
+                        matchedText = text;
+                    }
+                }
+            }
+        }
+
+        if (matchedText && matchedText !== lastText) {
+            lastText = matchedText;
+
+            const norm = normWord(matchedText);
+            if (norm && norm.split(' ').length === 2) {
+                usedWords.add(norm);
+            }
+
+            const origEl = document.getElementById('wd-original');
+            if (origEl) {
+                origEl.innerText = matchedText;
+            }
+
+            renderSuggestions(matchedText);
+        }
+    }
+
+    setTimeout(initUI, 1000);
+    loadWords();
+    setInterval(loadWords, 15000);
+    setInterval(scanWord, 200);
+
+    // ===== Chống bị đẩy lên khi bàn phím ảo mở =====
+    function repositionForKeyboard() {
+        if (!window.visualViewport) return;
+        const panel = document.getElementById('wd-mobile-panel');
+        const miniPanel = document.getElementById('wd-mini-panel');
+
+        const vv = window.visualViewport;
+        const offsetTop = vv.offsetTop || 0;
+
+        if (panel) {
+            panel.style.setProperty('top', (offsetTop + 8) + 'px', 'important');
+        }
+        if (miniPanel) {
+            miniPanel.style.setProperty('top', (offsetTop + 8) + 'px', 'important');
+        }
+    }
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', repositionForKeyboard);
+        window.visualViewport.addEventListener('scroll', repositionForKeyboard);
+    }
+    window.addEventListener('scroll', repositionForKeyboard, { passive: true });
+    setInterval(repositionForKeyboard, 300);
+})();
