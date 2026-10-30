@@ -2,797 +2,784 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kho Từ — Nối Từ</title>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Nối Từ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap" rel="stylesheet">
 <style>
-  :root{
-    --bg1:#0f1226;
-    --bg2:#1a1f3d;
-    --card:#191d3a;
-    --card2:#20264a;
-    --accent:#7c5cff;
-    --accent2:#00d4c8;
-    --text:#eef0ff;
-    --sub:#9aa0c7;
-    --danger:#ff5c7a;
-    --ok:#37e0a4;
-    --border: rgba(255,255,255,0.08);
-    --trap:#ffd54a;
-    --trap-bg: rgba(255,215,0,.14);
-    --mono: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  }
-  *{box-sizing:border-box;}
-  body{
-    margin:0;
-    min-height:100vh;
-    font-family:var(--mono);
-    background:
-      radial-gradient(1200px 600px at 10% -10%, #2a1f5c 0%, transparent 60%),
-      radial-gradient(1000px 500px at 110% 10%, #0c3b3a 0%, transparent 55%),
-      linear-gradient(160deg, var(--bg1), var(--bg2));
-    color:var(--text);
-  }
-  .wrap{
-    max-width:680px;
-    margin:0 auto;
-    padding:40px 14px 60px;
-  }
-  header{
-    text-align:center;
-    margin-bottom:26px;
-  }
-  header .eyebrow{
-    font-size:12px;
-    letter-spacing:.8px;
-    text-transform:uppercase;
-    color:var(--sub);
-    margin-bottom:6px;
-  }
-  header h1{
-    margin:0 0 10px;
-    font-size:28px;
-    font-weight:700;
-    background:linear-gradient(90deg, var(--accent2), var(--accent));
-    -webkit-background-clip:text;
-    background-clip:text;
-    color:transparent;
-    letter-spacing:.5px;
-  }
-  #count{
-    display:inline-block;
-    font-size:13px;
-    color:var(--accent2);
-    background:rgba(0,212,200,.12);
-    border:1px solid rgba(0,212,200,.35);
-    border-radius:999px;
-    padding:5px 14px;
-    white-space:nowrap;
-  }
-  .panel{
-    background:linear-gradient(180deg, var(--card), var(--card2));
-    border:1px solid var(--border);
-    border-radius:18px;
-    padding:22px;
-    margin-bottom:16px;
-    box-shadow:0 10px 30px rgba(0,0,0,.35);
-  }
-  .panel h2{
-    font-size:13px;
-    letter-spacing:.8px;
-    text-transform:uppercase;
-    color:var(--sub);
-    margin:0 0 14px;
-    font-weight:700;
-    display:flex;
-    align-items:center;
-    gap:8px;
-  }
-  .panel h2::before{
-    content:'';
-    width:6px;height:6px;
-    background:var(--accent2);
-    border-radius:50%;
-    box-shadow:0 0 8px var(--accent2);
-  }
-  .row{display:flex; gap:10px; flex-wrap:wrap;}
-  input[type=text], textarea{
-    font-family:inherit;
-    font-size:16px;
-    padding:12px 16px;
-    border:1.5px solid var(--border);
-    border-radius:12px;
-    background:#11142b;
-    color:var(--text);
-    outline:none;
-    transition:border-color .15s, box-shadow .15s;
-  }
-  input[type=text]:focus, textarea:focus{
-    border-color:var(--accent);
-    box-shadow:0 0 0 3px rgba(124,92,255,.2);
-  }
-  input[type=text]{flex:1; min-width:160px;}
-  textarea{width:100%; min-height:110px; resize:vertical; line-height:1.5;}
-  input::placeholder, textarea::placeholder{ color:var(--sub); opacity:.7; }
-  button{
-    font-family:inherit;
-    font-size:14px;
-    font-weight:700;
-    border:none;
-    border-radius:12px;
-    padding:12px 18px;
-    cursor:pointer;
-    transition:transform .1s, opacity .15s, filter .15s;
-  }
-  button:active{transform:scale(0.97);}
-  .btn-primary{
-    background:linear-gradient(90deg, var(--accent2), var(--accent));
-    color:#0a0a18;
-  }
-  .btn-primary:hover{ filter:brightness(1.08); }
-  .btn-secondary{
-    background:#12162e;
-    color:var(--text);
-    border:1px solid var(--border);
-  }
-  .btn-secondary:hover{ border-color:var(--accent2); color:var(--accent2); }
-  .btn-outline{
-    background:#12162e;
-    color:var(--sub);
-    border:1px solid var(--border);
-  }
-  .btn-outline:hover{ border-color:var(--accent); color:var(--text); }
-  .hint{
-    font-size:12.5px;
-    color:var(--sub);
-    margin-top:10px;
-    line-height:1.45;
-  }
-  #trapStatus{ margin-top:8px; }
-  .trap-check{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    margin-top:12px;
-    font-size:13px;
-    color:var(--text);
-    cursor:pointer;
-    user-select:none;
-  }
-  .trap-check input{ width:15px; height:15px; accent-color:var(--trap); cursor:pointer; }
-  #search{width:100%;}
-  .list{
-    display:flex;
-    flex-direction:column;
-    border:1px solid var(--border);
-    border-radius:14px;
-    overflow:hidden;
-    background:linear-gradient(180deg, var(--card), var(--card2));
-    box-shadow:0 10px 30px rgba(0,0,0,.35);
-  }
-  .item{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    padding:12px 16px;
-    border-bottom:1px solid var(--border);
-    font-size:15.5px;
-  }
-  .item:last-child{border-bottom:none;}
-  .item:nth-child(even){background:rgba(255,255,255,.02);}
-  .item .w{font-weight:500; color:var(--text);}
-  .item .idx{
-    font-size:11px;
-    color:var(--sub);
-    margin-right:12px;
-    opacity:.7;
-  }
-  .item .badge-trap{
-    font-size:11px;
-    color:var(--trap);
-    background:var(--trap-bg);
-    border:1px solid rgba(255,213,74,.55);
-    border-radius:999px;
-    padding:2px 9px;
-    margin-left:10px;
-    font-weight:700;
-  }
-  .item .actions{ display:flex; gap:6px; align-items:center; }
-  .item .trap-toggle{
-    font-size:14px;
-    background:none;
-    border:1px solid transparent;
-    padding:6px 9px;
-    border-radius:8px;
-    opacity:0.35;
-    cursor:pointer;
-    color:var(--sub);
-  }
-  .item .trap-toggle.on{
-    opacity:1;
-    border-color:rgba(255,213,74,.55);
-    background:var(--trap-bg);
-    color:var(--trap);
-  }
-  .item .trap-toggle:hover{ opacity:1; }
-  .item .del{
-    font-size:12px;
-    font-weight:700;
-    color:var(--danger);
-    background:none;
-    border:1px solid transparent;
-    padding:6px 10px;
-    border-radius:8px;
-  }
-  .item .del:hover{
-    background:rgba(255,92,122,.13);
-    border-color:rgba(255,92,122,.4);
-  }
-  .empty{
-    text-align:center;
-    padding:40px 20px;
-    color:var(--sub);
-    font-size:13.5px;
-  }
-  #status, #trapStatus{
-    font-size:12.5px;
-    color:var(--ok);
-    min-height:16px;
-    margin-top:8px;
-    font-weight:600;
-  }
-  #status.err, #trapStatus.err{ color:var(--danger); }
-  ::selection{ background:rgba(124,92,255,.35); }
-  .dir-toggle{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
-  .dir-btn{
-    flex:1; min-width:140px;
-    background:#12162e; border:1px solid var(--border); color:var(--sub);
-    padding:10px 12px; border-radius:10px; font-size:12.5px; font-weight:600;
-  }
-  .dir-btn .hint-line{ display:block; font-weight:400; font-size:11px; opacity:.7; margin-top:2px; }
-  .dir-btn.active{
-    background:linear-gradient(90deg, rgba(124,92,255,.25), rgba(0,212,200,.2));
-    border-color:var(--accent2); color:var(--text);
-  }
-  .suggest-list{ display:flex; flex-wrap:wrap; gap:9px; margin-top:14px; min-height:28px; }
-  .suggest-chip{
-    position:relative;
-    background:#12162e; border:1px solid var(--border); color:var(--text);
-    padding:8px 14px; border-radius:9px; font-size:14px; cursor:pointer;
-    transition:.15s; font-weight:500;
-  }
-  .suggest-chip:hover{ border-color:var(--accent2); color:var(--accent2); transform:translateY(-1px); }
-  .suggest-chip.dead-end{
-    background:rgba(255,92,122,.13); border-color:rgba(255,92,122,.5); color:var(--danger);
-  }
-  .suggest-chip.trap-risk{
-    background:rgba(255,183,0,.12); border-color:rgba(255,183,0,.55); color:#ffb700;
-  }
-  .suggest-chip.trap-marked{
-    background:var(--trap-bg); border-color:#ffd54a; color:var(--trap); font-weight:700;
-  }
-  .suggest-chip .x-mark, .suggest-chip .star-mark{ font-weight:800; margin-right:4px; }
-  .suggest-chip{ padding-right:36px; }
-  .suggest-chip .chip-del{
-    position:absolute; right:6px; top:50%; transform:translateY(-50%);
-    width:22px; height:22px; border-radius:50%;
-    background:rgba(255,255,255,.08); color:var(--sub);
-    font-size:12px; font-weight:800; line-height:1;
-    display:flex; align-items:center; justify-content:center;
-    border:none; cursor:pointer; opacity:.5; padding:0;
-  }
-  .suggest-chip .chip-del:hover{
-    background:var(--danger); color:#fff; opacity:1;
-    transform:translateY(-50%) scale(1.12);
-  }
-  #lookupMsg{
-    margin-top:12px; padding:10px 14px; border-radius:10px; font-size:13.5px; font-weight:600;
-    display:none;
-  }
-  #lookupMsg.show{ display:block; }
-  #lookupMsg.ok{ background:rgba(55,224,164,.13); color:var(--ok); border:1px solid rgba(55,224,164,.35); }
-  #lookupMsg.err{ background:rgba(255,92,122,.13); color:var(--danger); border:1px solid rgba(255,92,122,.35); }
-  @media (max-width:480px){
-    .row{ flex-direction:column; }
-    .btn-primary, .btn-secondary, .btn-outline{ width:100%; }
-  }
+:root{
+  --ink:#13111d; --surface:#1d1a2c; --surface2:#27233b; --line:#363150;
+  --text:#f5efe3; --muted:#aaa3c0;
+  --tile:#f3e9d2; --tile-ink:#1b1730;
+  --dead:#ff7b8e; --trap:#ffb04a; --ok:#5fe3c8; --risk-trap:#f2dc5d; --risk-dead:#b8a4ff;
+  --good:#6ee7a0; --warn:#ffc94d; --bad:#ff7b8e;
+  --ui:'Be Vietnam Pro',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --display:'Bricolage Grotesque','Be Vietnam Pro',system-ui,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;min-height:100%}
+body{
+  background:var(--ink);color:var(--text);font-family:var(--ui);font-size:15px;line-height:1.45;
+  font-variant-numeric:tabular-nums;color-scheme:dark;
+  padding:max(12px,env(safe-area-inset-top)) 0 max(28px,env(safe-area-inset-bottom));
+}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--warn);outline-offset:2px}
+#app{width:100%;max-width:520px;margin:0 auto;padding:0 14px;display:flex;flex-direction:column;gap:12px}
+
+/* ===== Thanh trên ===== */
+#top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 10px;padding:4px 2px}
+#mode{display:flex;align-items:center;gap:10px;min-width:0}
+#wd-dot{width:10px;height:10px;border-radius:50%;background:var(--good);flex:none}
+#wd-dot.off{background:var(--bad)}
+#wd-title{margin:0;font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:-.01em;line-height:1.1}
+#wd-status{font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
+#wd-status.ok::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--good);margin-right:6px}
+#wd-status.err{color:var(--bad)}
+
+/* ===== Công tắc ===== */
+#toggles{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.tg{
+  display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 6px;min-width:0;
+  border-radius:12px;background:var(--surface);border:1.5px solid var(--line);font-size:14px;font-weight:700;color:var(--muted);white-space:nowrap;
+  transition:background .15s,border-color .15s,color .15s;
+}
+.tg::before{content:'';flex:none;width:30px;height:18px;border-radius:9px;background:var(--line);
+  background-image:radial-gradient(circle at 9px 9px,var(--muted) 6px,transparent 6.5px);transition:background .15s}
+.tg[aria-pressed="true"]{color:var(--text);border-color:var(--ok);background:rgba(95,227,200,.1)}
+.tg[aria-pressed="true"]::before{background-color:var(--ok);background-image:radial-gradient(circle at 21px 9px,var(--ink) 6px,transparent 6.5px)}
+.tg.blocked{border-color:var(--warn);background:rgba(255,201,77,.12);color:var(--warn)}
+.tg.blocked::before{background-color:var(--warn);background-image:radial-gradient(circle at 21px 9px,var(--ink) 6px,transparent 6.5px)}
+.tg:active{transform:scale(.97)}
+.tg.act::before{display:none}
+.tg:disabled{opacity:.45}
+
+/* ===== Thành phần chung ===== */
+.view{display:flex;flex-direction:column;gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.lbl{font-size:13px;font-weight:700;color:var(--muted)}
+.lbl-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+h2.sec{margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted)}
+.empty{padding:14px 4px;color:var(--muted);font-size:15px;text-align:center}
+.empty.err{color:var(--bad)}
+.banner{border-radius:12px;padding:10px 14px;font-size:14px;font-weight:700}
+.banner.ok{background:rgba(110,231,160,.13);color:var(--good)}
+.banner.warn{background:rgba(255,201,77,.13);color:var(--warn)}
+.pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.pill{font-size:13px;font-weight:600;color:var(--muted);background:var(--surface2);border-radius:8px;padding:3px 9px}
+
+/* ===== Từ hiện tại ===== */
+#wd-count{display:flex;gap:12px;font-size:13px;font-weight:700}
+#wd-count .me{color:var(--good)} #wd-count .opp{color:var(--dead)}
+#wd-original{margin-top:4px;font-family:var(--display);font-weight:800;font-size:clamp(26px,8.5vw,36px);line-height:1.15;word-break:break-word}
+
+/* ===== Đáp án chính: viên chữ ===== */
+.tile,#wd-ai-row{
+  --k:var(--ok);
+  display:block;width:100%;text-align:left;position:relative;
+  background:var(--tile);color:var(--tile-ink);border-radius:18px;padding:14px 18px 16px;
+  border-bottom:7px solid var(--k);box-shadow:0 10px 0 -4px rgba(0,0,0,.35);
+}
+.tile.k-dead,#wd-ai-row.k-dead{--k:var(--dead)} .tile.k-trap,#wd-ai-row.k-trap{--k:var(--trap)}
+.tile.k-ok,#wd-ai-row.k-ok{--k:var(--ok)} .tile.k-risk-trap,#wd-ai-row.k-risk-trap{--k:var(--risk-trap)}
+.tile.k-risk-dead,#wd-ai-row.k-risk-dead{--k:var(--risk-dead)}
+.tile .lbl,#wd-ai-row .lbl{color:#5a5470}
+.tile-word,#wd-ai-best{
+  display:block;font-family:var(--display);font-weight:800;font-size:clamp(38px,13vw,58px);line-height:1.05;
+  letter-spacing:-.02em;margin:2px 0 4px;word-break:break-word;color:var(--tile-ink);
+}
+#wd-ai-best{cursor:pointer;background:none;border:0;padding:0;text-align:left;width:100%}
+.tile-hint,#wd-why{font-size:14px;font-weight:600;color:#4a4463;line-height:1.4}
+#wd-ai-reason{display:inline-flex;align-items:center;font-size:13px;font-weight:800;background:var(--k);color:#1b1730;border-radius:8px;padding:2px 10px}
+.tile:active,#wd-ai-row:active{transform:translateY(2px);box-shadow:0 6px 0 -4px rgba(0,0,0,.35)}
+.tile.guess{border-bottom-style:dashed}
+.tile.active,#wd-ai-row.wd-picked{background:#c9f3dc}
+.tile.wrong{background:#ffd3d9;--k:#e0314b}
+#wd-ai-row.pop,.tile.pop{animation:pop .22s ease-out}
+@keyframes pop{from{transform:scale(.97)}to{transform:scale(1)}}
+
+/* ===== Chip từ ===== */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  --k:var(--ok);min-height:44px;padding:0 16px 0 14px;border-radius:12px;background:var(--surface);
+  border:1.5px solid var(--line);border-left:5px solid var(--k);font-size:17px;font-weight:700;color:var(--text);
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+}
+.chip:active{transform:scale(.95)}
+.chip i{font-style:normal;font-weight:600;font-size:13px;color:var(--muted)}
+.chip.k-dead{--k:var(--dead)} .chip.k-trap{--k:var(--trap)} .chip.k-ok{--k:var(--ok)}
+.chip.k-risk-trap{--k:var(--risk-trap)} .chip.k-risk-dead{--k:var(--risk-dead)}
+.chip.dim{border-style:dashed;color:var(--muted)}
+.chip.active{background:rgba(110,231,160,.18);border-color:var(--good)}
+.chip.picked{background:#1c5a43;border-color:var(--good)}
+.chip .mk{font-size:14px;color:var(--k)}
+#wd-ai-alt:empty{display:none}
+#wd-suggest{
+  display:grid;grid-template-rows:repeat(2,auto);grid-auto-flow:column;grid-auto-columns:max-content;gap:8px;
+  overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-x;scrollbar-width:none;padding:1px 0 3px;
+}
+#wd-suggest::-webkit-scrollbar{display:none}
+#wd-suggest .empty{grid-row:1 / span 2;white-space:nowrap;text-align:left;align-self:center}
+.scroll{max-height:340px;overflow-y:auto;scrollbar-width:thin}
+
+/* ===== Chú giải ===== */
+#wd-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:13px;color:var(--muted);font-weight:600}
+.lg{display:flex;align-items:center;gap:6px}
+.lg b{width:12px;height:12px;border-radius:4px;flex:none}
+
+/* ===== Lịch sử ===== */
+.hist-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.hist-head .sec{margin:0}
+#wd-hist{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;padding:9px 12px;min-height:52px;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px}
+#wd-hist::-webkit-scrollbar{display:none}
+.wd-h{flex:none;padding:5px 11px;border-radius:999px;background:var(--surface2);font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap}
+.wd-h.me{background:rgba(110,231,160,.15);color:var(--good)}
+.wd-h.last{color:var(--text);box-shadow:inset 0 0 0 1.5px currentColor}
+.wd-h.me.last{color:var(--good)}
+.wd-sep{flex:none;font-style:normal;font-weight:700;color:var(--line)}
+.wd-empty{font-size:14px;font-weight:600;color:var(--muted);padding:0 4px}
+  .hint{margin:8px 2px 0;font-size:13px;color:var(--muted)}
+.chip.unk{--k:var(--warn)}
+.btn-row{display:flex;gap:8px;margin-top:10px}
+.btn-row button{flex:1;min-height:44px;border-radius:12px;border:1.5px solid var(--line);font-weight:700;font-size:14px}
+.btn-row button:active{background:var(--surface2)}
+#wd-clear{min-height:44px;margin-right:-10px;padding:0 10px;border-radius:12px;font-weight:700;font-size:13px;color:var(--dead)}
+#wd-clear:active{background:rgba(255,123,142,.12)}
+
+/* ===== Giải đố ===== */
+.q-head{font-size:19px;font-weight:700;line-height:1.35;word-break:break-word}
+.q-off{align-self:flex-start;min-height:44px;padding:0 16px;border-radius:12px;border:1.5px solid var(--line);font-weight:700;font-size:14px}
+.q-note{font-size:14px;color:var(--muted);font-weight:600}
+
+/* ===== Gom Từ ===== */
+#wd-gom-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.g-cell{display:flex;align-items:center;justify-content:center;min-height:58px;border-radius:14px;background:var(--tile);color:var(--tile-ink);
+  font-family:var(--display);font-weight:800;font-size:24px;box-shadow:0 4px 0 rgba(0,0,0,.35)}
+.g-cell:empty{background:var(--surface);box-shadow:none;border:1.5px dashed var(--line)}
+
+/* ===== Phòng ===== */
+#room{display:flex;align-items:center;gap:1px;flex:none;height:34px;padding:0 11px;border-radius:999px;background:var(--surface);border:1.5px solid var(--line);color:var(--muted);font-weight:700;cursor:text}
+#room:focus-within{border-color:var(--warn)}
+#code-in{width:6ch;min-width:3ch;max-width:14ch;border:0;background:none;color:var(--text);padding:0;font:inherit;font-size:16px;font-weight:600;outline:0}
+#code-in::placeholder{color:var(--muted);opacity:.6}
+
+#wd-preview{
+  position:fixed;z-index:1000;display:none;max-width:260px;max-height:260px;overflow-y:auto;
+  background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:14px;
+  box-shadow:0 16px 36px rgba(0,0,0,.6);line-height:1.55;
+}
+/* ===== Bảng các từ nối tiếp ===== */
+#wd-sheet{position:fixed;inset:0;z-index:1000;background:rgba(5,4,10,.6);display:flex;align-items:flex-end;justify-content:center}
+#sheet-card{width:100%;max-width:520px;max-height:78vh;display:flex;flex-direction:column;gap:12px;
+  background:var(--surface);border:1px solid var(--line);border-bottom:0;border-radius:20px 20px 0 0;
+  padding:16px 16px max(16px,env(safe-area-inset-bottom))}
+#sheet-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+#sheet-title{font-family:var(--display);font-weight:800;font-size:26px;line-height:1.15;word-break:break-word}
+#sheet-x{flex:none;width:44px;height:44px;border-radius:12px;background:var(--surface2);font-size:18px;font-weight:700}
+#sheet-body{overflow-y:auto;display:flex;flex-direction:column;gap:12px;min-height:60px}
+.sg{--k:var(--ok)}
+.sg.k-dead{--k:var(--dead)} .sg.k-trap{--k:var(--trap)} .sg.k-risk-trap{--k:var(--risk-trap)} .sg.k-risk-dead{--k:var(--risk-dead)}
+.sg-t{font-size:14px;font-weight:800;color:var(--k);margin-bottom:6px}
+.sg-w{display:flex;flex-wrap:wrap;gap:6px}
+.sw{padding:5px 11px 5px 9px;border-radius:9px;background:var(--surface2);border-left:4px solid var(--k);font-size:16px;font-weight:700}
+#sheet-pick{min-height:50px;border-radius:14px;background:var(--tile);color:var(--tile-ink);font-weight:800;font-size:16px}
+#sheet-pick:active{transform:scale(.98)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <div class="eyebrow">Kho từ — Nối từ</div>
-    <h1>🔗 Sổ tay từ vựng</h1>
-    <div id="count">— từ</div>
+<main id="app">
+  <header id="top">
+    <div id="mode"><span id="wd-dot" class="off" title="Kết nối với userscript"></span><h1 id="wd-title">Nối Từ</h1>
+      <label id="room" title="Mã phòng (phải trùng với userscript)">#<input id="code-in" placeholder="phong1" aria-label="Mã phòng, phải trùng với userscript" autocapitalize="off" autocomplete="off" spellcheck="false" maxlength="30"></label>
+    </div>
+    <div id="wd-status">Đang tải…</div>
   </header>
 
-  <div class="panel">
-    <h2>Tìm từ nối</h2>
-    <div class="row">
-      <input type="text" id="lookupInput" placeholder="Ví dụ: hành, sinh, thương…" autocomplete="off">
-      <button class="btn-primary" id="lookupBtn">Tìm</button>
-    </div>
-    <div class="dir-toggle">
-      <button type="button" class="dir-btn active" data-dir="after">Từ nối phía sau <span class="hint-line">(hành → hành động)</span></button>
-      <button type="button" class="dir-btn" data-dir="before">Từ nối phía trước <span class="hint-line">(cây → cỏ cây)</span></button>
-    </div>
-    <div id="lookupMsg"></div>
-    <p class="hint" style="margin-bottom:0;">
-      ★ = bẫy đã đánh dấu · ✗ đỏ = cụt · ✗ cam = không nên dùng (sau là cụt hoặc bẫy)
-    </p>
-    <div id="suggestList" class="suggest-list">
-      <span class="hint" style="margin:0;">Nhập một âm tiết ở trên để xem gợi ý.</span>
-    </div>
+  <div id="toggles" role="group" aria-label="Đọc từ nên dùng">
+    <button id="wd-speak" class="tg" type="button" aria-pressed="false">Đọc to</button>
+    <button id="wd-say" class="tg act" type="button">Nghe lại</button>
   </div>
 
-  <div class="panel">
-    <h2>Thêm một từ</h2>
-    <div class="row">
-      <input type="text" id="singleWord" placeholder="ví dụ: ba lô" autocomplete="off">
-      <button class="btn-primary" id="addOne">Thêm</button>
-    </div>
-    <label class="trap-check">
-      <input type="checkbox" id="singleTrap">
-      <span>🪤 Đánh dấu là từ nên dùng để bẫy</span>
-    </label>
-    <div id="status"></div>
-  </div>
+  <!-- Giải đố -->
+  <section id="wd-q" class="view" hidden></section>
 
-  <div class="panel">
-    <h2>Thêm hàng loạt</h2>
-    <textarea id="bulkWords" placeholder="Mỗi từ một dòng, ví dụ:&#10;ba lô&#10;cây bút&#10;dòng sông"></textarea>
-    <label class="trap-check">
-      <input type="checkbox" id="bulkTrap">
-      <span>🪤 Đánh dấu tất cả là từ nên dùng để bẫy</span>
-    </label>
-    <div class="row" style="margin-top:10px;">
-      <button class="btn-secondary" id="addBulk">Thêm tất cả</button>
-    </div>
-    <div class="hint">Từ trùng lặp sẽ tự động bỏ qua (giữ nguyên trạng thái bẫy cũ nếu đã tồn tại và bạn không tick).</div>
-  </div>
-
-  <div class="panel">
-    <h2>Đánh dấu bẫy theo âm cuối</h2>
-    <p class="hint" style="margin-top:0;margin-bottom:12px;">
-      Nhập một âm tiết (vd: <strong>phiệt</strong>) rồi bấm «Đánh dấu»: tất cả từ trong kho có <em>âm cuối</em> trùng sẽ được gắn 🪤 bẫy — giống trang Nối Từ.
-    </p>
-    <div class="row">
-      <input type="text" id="trapSyllable" placeholder="ví dụ: phiệt, hành, sinh…" autocomplete="off">
-      <button class="btn-primary" id="trapMarkBtn">Đánh dấu</button>
-      <button class="btn-outline" id="trapUnmarkBtn">Bỏ đánh dấu</button>
-    </div>
-    <div id="trapStatus"></div>
-  </div>
-
-  <details class="panel vault-details" id="vaultDetails">
-    <summary class="vault-summary">
-      <span class="vault-title">Kho từ đầy đủ</span>
-      <span class="vault-hint">bấm để mở / thu gọn</span>
-    </summary>
-    <div class="vault-body">
-      <div style="margin-bottom:14px;">
-        <input type="text" id="search" placeholder="Gõ để lọc danh sách…" autocomplete="off" style="width:100%;">
-        <label class="trap-check" style="margin-top:10px;">
-          <input type="checkbox" id="trapOnly">
-          <span>🪤 Chỉ hiện từ đã đánh dấu bẫy</span>
-        </label>
+  <!-- Nối Từ -->
+  <section id="wd-body-assist" class="view">
+    <div class="card">
+      <div class="lbl-row">
+        <span class="lbl">Từ hiện tại</span>
+        <span id="wd-count"><span class="me">Bạn <b id="wd-my-n">0</b></span><span class="opp">Đối thủ <b id="wd-opp-n">0</b></span></span>
       </div>
-      <div class="list" id="list">
-        <div class="empty">Đang tải kho từ…</div>
+      <div id="wd-original">Chờ từ...</div>
+    </div>
+
+    <div id="wd-ai-row" class="k-ok">
+      <div class="lbl-row"><span id="wd-ai-label" class="lbl">Nên nối</span><span id="wd-ai-reason"></span></div>
+      <button id="wd-ai-best" type="button">…</button>
+      <div id="wd-why"></div>
+    </div>
+
+    <div id="wd-alt-wrap" hidden>
+      <h2 class="sec">Lựa chọn khác (điểm càng cao càng tốt)</h2>
+      <div id="wd-ai-alt" class="chips"></div>
+    </div>
+
+    <div>
+      <h2 class="sec">Các từ có thể nối</h2>
+      <div id="wd-suggest" class="chips"><div class="empty">Chờ từ...</div></div>
+      <div id="wd-legend">
+        <span class="lg"><b style="background:var(--dead)"></b>Cụt: đối thủ hết đường</span>
+        <span class="lg"><b style="background:var(--trap)"></b>Bẫy</span>
+        <span class="lg"><b style="background:var(--ok)"></b>Thường</span>
+        <span class="lg"><b style="background:var(--risk-trap)"></b>Nên tránh</span>
       </div>
     </div>
-  </details>
+
+    <div>
+      <div class="hist-head">
+        <h2 class="sec">Lịch sử <span id="wd-hist-n"></span></h2>
+        <button id="wd-clear" type="button" title="Xóa lịch sử và từ đã dùng">Xóa hết</button>
+      </div>
+      <div id="wd-hist"></div>
+    </div>
+
+    <div>
+      <h2 class="sec">Từ chưa có trong kho <span id="wd-unk-n"></span></h2>
+      <div id="wd-unk" class="chips scroll"></div>
+      <p class="hint">Bấm vào một từ để thêm vào kho.</p>
+      <div id="wd-unk-btns" class="btn-row" hidden>
+        <button id="wd-unk-copy" type="button">Chép cả danh sách</button>
+        <button id="wd-unk-clear" type="button">Xóa danh sách</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+<div id="wd-sheet" hidden>
+  <div id="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div id="sheet-head">
+      <div><div class="lbl">Các từ nối tiếp sau</div><div id="sheet-title"></div></div>
+      <button id="sheet-x" type="button" aria-label="Đóng">✕</button>
+    </div>
+    <div id="sheet-body"></div>
+    <button id="sheet-pick" type="button">Chọn từ này</button>
+  </div>
 </div>
 
 <script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyAFdpA9-7UqQmYpJffdxbA2GiKvfFvw_Tg",
-    authDomain: "khotu-fc3e7.firebaseapp.com",
-    databaseURL: "https://khotu-fc3e7-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "khotu-fc3e7",
-    storageBucket: "khotu-fc3e7.firebasestorage.app",
-    messagingSenderId: "548193803839",
-    appId: "1:548193803839:web:ee19b95b49e429d23a228a"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-  const wordsRef = db.ref("words");
+const DB = "https://khotu-fc3e7-default-rtdb.asia-southeast1.firebasedatabase.app";
+const $ = id => document.getElementById(id);
+const norm = w => (w || '').trim().toLowerCase().replace(/\s+/g, ' ').normalize('NFC');
+// Chuẩn hóa vị trí dấu thanh: hoà = hòa, thuý = thúy
+const canonSyl = s => { let tone = ''; const b = (s || '').toLowerCase().normalize('NFD').replace(/[\u0300\u0301\u0303\u0309\u0323]/g, m => { tone = m; return ''; }).normalize('NFC'); return b + tone; };
+const canonW = w => w.split(' ').map(canonSyl).join(' ');
+const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
 
-  const listEl = document.getElementById('list');
-  const countEl = document.getElementById('count');
-  const statusEl = document.getElementById('status');
-  const searchEl = document.getElementById('search');
-  const trapOnlyEl = document.getElementById('trapOnly');
-  const singleInput = document.getElementById('singleWord');
-  const singleTrap = document.getElementById('singleTrap');
-  const bulkInput = document.getElementById('bulkWords');
-  const bulkTrap = document.getElementById('bulkTrap');
+// ===== Mã phòng =====
+let code = new URLSearchParams(location.search).get('code') || lsGet('wd_live_code', 'phong1');
+$('code-in').value = code;
+const fitCode = () => { $('code-in').style.width = Math.min(14, Math.max(4, $('code-in').value.length + 1)) + 'ch'; };
+fitCode();
+$('code-in').oninput = fitCode;
+$('code-in').onkeydown = e => { if (e.key === 'Enter') e.target.blur(); };
+$('code-in').onchange = () => {
+  code = $('code-in').value.trim() || 'phong1'; lsSet('wd_live_code', code);
+  $('code-in').value = code; fitCode();
+  lastT = 0; lastClearT = null; qJson = ''; pollQ();
+};
 
-  let allWords = []; // mảng {word, trap, first, last}, đã sắp xếp
-  let byFirst = new Map(); // syllable -> entries[]
-  let byLast = new Map();
-  let contCountAfter = new Map(); // lastSyllable -> số từ bắt đầu bằng nó
-  let contCountBefore = new Map(); // firstSyllable -> số từ kết thúc bằng nó
-  let trapAfter = new Map(); // lastSyllable -> có từ bẫy bắt đầu bằng nó?
-  let trapBefore = new Map();
-  let lookupDir = 'after'; // after | before
-  const LIST_PAGE = 150; // chỉ render tối đa N dòng mỗi lần lọc
-
-  function toKey(word) {
-    return encodeURIComponent(word.trim().toLowerCase()).replace(/\./g, '%2E');
-  }
-
-  function normalize(word) {
-    return word.trim().replace(/\s+/g, ' ');
-  }
-
-  function setStatus(msg, isErr) {
-    statusEl.textContent = msg;
-    statusEl.className = isErr ? 'err' : '';
-    if (msg) setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ''; }, 3000);
-  }
-
-  function rebuildLookupIndex() {
-    byFirst = new Map();
-    byLast = new Map();
-    contCountAfter = new Map();
-    contCountBefore = new Map();
-    trapAfter = new Map();
-    trapBefore = new Map();
-
-    for (let i = 0; i < allWords.length; i++) {
-      const x = allWords[i];
-      const parts = normalize(x.word).toLowerCase().split(' ');
-      if (parts.length < 2) { x.first = ''; x.last = ''; continue; }
-      x.first = parts[0];
-      x.last = parts[parts.length - 1];
-      if (!byFirst.has(x.first)) byFirst.set(x.first, []);
-      byFirst.get(x.first).push(x);
-      if (!byLast.has(x.last)) byLast.set(x.last, []);
-      byLast.get(x.last).push(x);
+// ===== Kho từ =====
+const byFirst = new Map(), trapSet = new Set();
+let wordSet = new Set(), canonSet = new Set();
+let dictReady = false, totalWords = 0;
+function setStatus() {
+  const el = $('wd-status');
+  el.style.color = '';
+  if (dictReady) { el.className = 'ok'; el.textContent = 'Kho ' + totalWords.toLocaleString('vi-VN') + ' từ'; }
+  else { el.className = 'err'; el.textContent = 'Lỗi tải kho từ'; }
+}
+function loadWords() {
+  fetch(DB + '/words.json').then(r => r.json()).then(data => {
+    byFirst.clear(); trapSet.clear();
+    const seen = new Set();
+    for (const e of (data ? Object.values(data) : [])) {
+      const w = typeof e === 'string' ? e : e && e.w;
+      if (!w) continue;
+      const n = norm(w), p = n.split(' ');
+      if (p.length !== 2 || seen.has(n)) continue;
+      seen.add(n);
+      if (e && e.trap) trapSet.add(n);
+      if (!byFirst.has(p[0])) byFirst.set(p[0], []);
+      byFirst.get(p[0]).push(n);
     }
+    totalWords = seen.size; dictReady = true; setStatus();
+    wordSet = seen; canonSet = new Set(Array.from(seen, canonW));
+    pendingUnk.splice(0).forEach(noteUnknown);
+    pruneUnknown();
+    if (curWord) render();
+  }).catch(() => { dictReady = false; setStatus(); });
+}
+loadWords(); setInterval(loadWords, 15000);
+function toast(msg, col) {
+  const st = $('wd-status'); st.className = ''; st.textContent = msg; st.style.color = col || 'var(--good)';
+  clearTimeout(toast.t); toast.t = setTimeout(setStatus, 1400);
+}
 
-    // Precompute counts + trap flags (O(syllables) thay vì O(n²) lúc sort)
-    for (const [syl, arr] of byFirst) {
-      contCountAfter.set(syl, arr.length);
-      trapAfter.set(syl, arr.some(e => e.trap));
+// ===== Đọc to từ nên dùng (giọng tiếng Việt của máy) =====
+const canSpeak = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+let speakOn = canSpeak && lsGet('wd_speak', '0') === '1';
+let viVoice = null, lastSayText = '', lastSayKey = '';
+function pickVoice() {
+  if (!canSpeak) return;
+  const vs = speechSynthesis.getVoices();
+  viVoice = vs.find(v => /^vi([-_]|$)/i.test(v.lang)) || null;
+}
+if (canSpeak) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function speak(text) {
+  if (!canSpeak || !text) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'vi-VN'; u.rate = 0.95;
+    if (viVoice) u.voice = viVoice;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+// đọc khi gợi ý đổi (key giống lần trước thì không đọc lại)
+function say(text, key) {
+  lastSayText = text;
+  if (!speakOn || key === lastSayKey) { if (key !== lastSayKey) lastSayKey = key; return; }
+  lastSayKey = key;
+  speak(text);
+}
+function showSpeak() {
+  const b = $('wd-speak');
+  b.setAttribute('aria-pressed', speakOn);
+  if (!canSpeak) { b.disabled = true; $('wd-say').disabled = true; b.title = 'Trình duyệt này không hỗ trợ đọc to'; }
+}
+$('wd-speak').onclick = () => {
+  speakOn = !speakOn; lsSet('wd_speak', speakOn ? '1' : '0'); showSpeak();
+  if (speakOn) {
+    pickVoice();
+    if (!viVoice) toast('Máy chưa có giọng tiếng Việt', 'var(--warn)');
+    speak(lastSayText || 'Đã bật đọc to');   // chạm của người dùng giúp trình duyệt cho phép phát tiếng
+  } else if (canSpeak) speechSynthesis.cancel();
+};
+$('wd-say').onclick = () => { pickVoice(); speak(lastSayText || 'Chưa có gợi ý'); };
+showSpeak();
+
+// ===== Trạng thái Nối Từ =====
+const used = new Set(), mine = new Set(), opp = new Set();
+let curWord = '', lastT = 0, hist = [];
+const updCnt = () => { $('wd-my-n').textContent = mine.size; $('wd-opp-n').textContent = opp.size; };
+
+function doClear() {
+  used.clear(); mine.clear(); opp.clear(); hist = []; updCnt(); renderHist();
+  anchor = '';
+  toast('Đã xóa', 'var(--warn)');
+  if (curWord) render();
+}
+
+// ===== Đồng bộ nút Xóa với userscript (/liveclear/<mã phòng>) =====
+let lastClearT = null;
+const clearUrl = () => `${DB}/liveclear/${encodeURIComponent(code)}.json`;
+function pushClear() {
+  const t = Date.now(); lastClearT = t;
+  fetch(clearUrl(), { method: 'PUT', body: JSON.stringify({ t }) }).catch(() => {});
+}
+async function pollClear() {
+  try {
+    const d = await (await fetch(clearUrl(), { cache: 'no-store' })).json();
+    const t = d && d.t;
+    if (lastClearT === null) { lastClearT = t || 0; return; }
+    if (t && t !== lastClearT) { lastClearT = t; doClear(); }
+  } catch (e) {}
+}
+setInterval(pollClear, 700); pollClear();
+$('wd-clear').onclick = () => { doClear(); pushClear(); };
+
+// ===== Giải đố / Gom Từ (/liveq/<mã phòng>) =====
+let qState = null, qJson = '';
+async function copyText(t) {
+  try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(t); return true; } } catch (e) {}
+  try {
+    const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0;left:0;top:0';
+    document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok;
+  } catch (e) { return false; }
+}
+function applyView() {
+  const v = qState && qState.type === 'q' ? 'q' : 'nv';
+  $('wd-body-assist').hidden = v !== 'nv';
+  $('wd-q').hidden = v !== 'q';
+  $('wd-title').textContent = v === 'q' ? 'Giải đố' : 'Nối Từ';
+}
+
+function renderQ(s) {
+  const raw = s.words || [];
+  let items = raw.map((w, i) => ({ w, dim: !!(s.dimF && s.dimF[i]), kind: (s.kinds && s.kinds[i]) || 'ok' }));
+  const isGl = s.kind === 'gl';
+  const meta = [];
+  if (s.tag) meta.push(esc(s.tag));
+  if (s.guess) meta.push('đoán ngoài kho');
+  if (s.kind === 'nv' && s.total) meta.push(s.total + ' từ nối được');
+  else if (s.total && s.total > raw.length) meta.push('còn ' + s.total + ' từ khớp');
+  if (s.mode === 'dung') meta.push('chọn từ đúng');
+  if (s.note) meta.push(esc(s.note));
+
+  let h = `<div class="card"><div class="q-head">${esc(s.head)}</div>`;
+  if (meta.length) h += `<div class="pills">${meta.map(m => `<span class="pill">${m}</span>`).join('')}</div>`;
+  h += '</div>';
+  if (s.warn) h += `<div class="banner warn">${esc(s.warn)}</div>`;
+  if (s.copy) h += `<div class="banner ok">${esc(s.copy)}</div>`;
+
+  if (!items.length) {
+    if (!s.warn) h += `<div class="empty">${esc(s.emptyMsg || 'Chưa có gợi ý')}</div>`;
+  } else {
+    const t = items[0];
+    let cls = 'tile k-' + t.kind, hint = 'Chạm để chép';
+    if (t.dim) cls += ' guess';
+    if (isGl) hint = 'Chạm các ô trên game theo thứ tự chữ này · chạm đây để chép';
+    if (t.dim && !isGl) hint = 'Đoán ngoài kho · chạm để chép';
+    h += `<button type="button" class="${cls}" data-act="copy" data-w="${esc(t.w)}">
+      <span class="lbl">${s.kind === 'sp' ? 'Đáp án đúng' : 'Gợi ý số 1'}</span>
+      <span class="tile-word">${esc(t.w)}</span><span class="tile-hint">${hint}</span></button>`;
+    if (items.length > 1) {
+      h += '<div><h2 class="sec">Gợi ý khác</h2><div class="chips scroll">' + items.slice(1).map(x => {
+        let c = 'chip k-' + x.kind + (x.dim ? ' dim' : '');
+        return `<button type="button" class="${c}" data-act="copy" data-w="${esc(x.w)}">${esc(x.w)}</button>`;
+      }).join('') + '</div></div>';
     }
-    for (const [syl, arr] of byLast) {
-      contCountBefore.set(syl, arr.length);
-      trapBefore.set(syl, arr.some(e => e.trap));
+  }
+  $('wd-q').innerHTML = h;
+  if (items.length) say(items[0].w, 'q|' + s.head + '|' + items[0].w);
+  const tl = $('wd-q').querySelector('.tile');
+  if (tl && renderQ.last !== s.head + '|' + (items[0] && items[0].w)) { tl.classList.add('pop'); }
+  renderQ.last = s.head + '|' + (items[0] && items[0].w);
+}
+$('wd-q').onclick = e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const act = el.dataset.act, w = el.dataset.w;
+  if (act === 'copy') copyText(w).then(ok => toast(ok ? '✓ Đã chép ' + w : 'Không chép được', ok ? 'var(--good)' : 'var(--bad)'));
+};
+
+async function pollQ() {
+  try {
+    const r = await fetch(`${DB}/liveq/${encodeURIComponent(code)}.json`, { cache: 'no-store' });
+    const txt = await r.text();
+    if (txt === qJson) return;
+    qJson = txt;
+    qState = JSON.parse(txt);
+    if (qState && qState.type === 'q') renderQ(qState);
+    if (qState && qState.warn && qState.type === 'idle') toast(qState.warn, 'var(--warn)');
+    applyView();
+  } catch (e) {}
+}
+setInterval(pollQ, 400); pollQ();
+
+// ===== Nhận từ Nối Từ từ userscript (/live/<mã phòng>) =====
+async function poll() {
+  try {
+    const r = await fetch(`${DB}/live/${encodeURIComponent(code)}.json`, { cache: 'no-store' });
+    const d = await r.json();
+    $('wd-dot').classList.remove('off');
+    if (d && d.word && d.t !== lastT) { lastT = d.t; onWord(d.word); }
+  } catch (e) { $('wd-dot').classList.add('off'); }
+}
+setInterval(poll, 400); poll();
+
+// ===== Kiểm tra định dạng tiếng Việt: âm tiết = [phụ âm đầu] + nguyên âm + [phụ âm cuối] + tối đa 1 dấu thanh =====
+const VN_INIT = ['ngh','ng','nh','ch','gh','gi','kh','ph','th','tr','qu','b','c','d','đ','g','h','k','l','m','n','p','r','s','t','v','x',''];
+const VN_FIN = ['ng','nh','ch','c','m','n','p','t',''];
+const VN_NUC = new Set(('a ă â e ê i o ô ơ u ư y ai ao au ay âu ây eo êu ia iê iu oa oă oe oi ôi ơi ua uâ uê ui uô uơ uy ưa ưi ươ ưu yê oo ' +
+  'iêu yêu oai oay oeo uây uôi ươi ươu uyê uya uyu').split(' '));
+function isVnSyl(syl) {
+  let tone = '', cnt = 0;
+  const base = (syl || '').toLowerCase().normalize('NFD')
+    .replace(/[\u0300\u0301\u0303\u0309\u0323]/g, m => { tone = m; cnt++; return ''; }).normalize('NFC');
+  if (cnt > 1 || !base) return false;
+  for (const ini of VN_INIT) {
+    if (!base.startsWith(ini)) continue;
+    const rest = base.slice(ini.length);
+    for (const fin of VN_FIN) {
+      if (fin && !rest.endsWith(fin)) continue;
+      const nuc = fin ? rest.slice(0, -fin.length) : rest;
+      if (!VN_NUC.has(nuc)) continue;
+      const f = nuc[0];
+      if ((ini === 'k' || ini === 'gh' || ini === 'ngh') && !/[ieêy]/.test(f)) continue;          // k/gh/ngh chỉ đứng trước i, e, ê, y
+      if ((ini === 'c' || ini === 'g' || ini === 'ng') && /[ieêy]/.test(f) && !(ini === 'g' && nuc === 'i')) continue;  // c/g/ng không đứng trước i, e, ê, y
+      if ((fin === 'c' || fin === 'ch' || fin === 'p' || fin === 't') && tone !== '\u0301' && tone !== '\u0323') continue;  // đuôi c/ch/p/t chỉ có dấu sắc hoặc nặng
+      return true;
     }
   }
+  return false;
+}
+const isVnWord = n => { const p = (n || '').split(' '); return p.length === 2 && p.every(isVnSyl); };
 
-  function lastSyllable(w) {
-    if (typeof w === 'object' && w.last) return w.last;
-    const parts = normalize(w).toLowerCase().split(' ');
-    return parts[parts.length - 1];
+// Từ nối tiếp = âm tiết đầu của từ mới trùng âm tiết cuối của từ trước đó
+const isChain = (prev, n) => {
+  const a = norm(prev).split(' '), b = n.split(' ');
+  return a.length === 2 && b.length === 2 && canonSyl(a[1]) === canonSyl(b[0]);
+};
+let anchor = '';   // từ nối tiếp gần nhất đã được chấp nhận
+function onWord(w) {
+  const n = norm(w), valid = isVnWord(n);   // đúng 2 âm tiết và đúng định dạng tiếng Việt
+  // đối chiếu với từ gần nhất đã nhận VÀ từ đang hiện, để một lần đọc nhầm không làm hỏng chuỗi
+  const chain = valid && !!anchor && (isChain(anchor, n) || (curWord && isChain(curWord, n)));
+  const start = valid && !anchor;   // chưa có mốc (đầu ván / sau khi xóa) thì từ hợp lệ đầu tiên làm mốc
+  curWord = w;
+  if (chain || start) anchor = n;
+  if (chain) {                      // chỉ từ nối tiếp mới tính là đã dùng
+    used.add(n);
+    if (!mine.has(n)) opp.add(n);
   }
-  function firstSyllable(w) {
-    if (typeof w === 'object' && w.first) return w.first;
-    return normalize(w).toLowerCase().split(' ')[0];
+  if (chain || start) noteUnknown(n);
+  if (chain || start) {              // từ không nối tiếp thì không vào lịch sử
+    hist.push({ w, n, me: mine.has(n) });
+    // chỉ giữ đoạn chuỗi liền mạch ở cuối: từ phía trước mà không nối với từ sau thì bỏ
+    let k = hist.length - 1;
+    while (k > 0 && isChain(hist[k - 1].n, hist[k].n)) k--;
+    hist = hist.slice(Math.max(k, hist.length - 30));
   }
-  function nextSyllableOf(entryOrWord) {
-    if (typeof entryOrWord === 'object') {
-      return lookupDir === 'after' ? entryOrWord.last : entryOrWord.first;
-    }
-    return lookupDir === 'after' ? lastSyllable(entryOrWord) : firstSyllable(entryOrWord);
+  updCnt(); renderHist();
+  $('wd-original').textContent = w;
+  hidePreview();
+  render();
+  if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) {}
+}
+
+// ===== Từ phát hiện được mà chưa có trong kho (lưu trong trình duyệt, không tự đẩy lên kho) =====
+const UNK_KEY = 'wd_unknown';
+let unknown = [];
+try { unknown = JSON.parse(lsGet(UNK_KEY, '[]')) || []; } catch (e) { unknown = []; }
+unknown = unknown.filter(u => u && isVnWord(u.w));   // bỏ các từ sai định dạng đã lưu từ trước
+const pendingUnk = [];
+const knownWord = n => wordSet.has(n) || canonSet.has(canonW(n));
+function saveUnknown() { lsSet(UNK_KEY, JSON.stringify(unknown.slice(0, 500))); }
+function noteUnknown(n) {
+  if (!dictReady) { pendingUnk.push(n); return; }
+  if (knownWord(n) || unknown.some(u => u.w === n)) return;
+  unknown.unshift({ w: n, t: Date.now() });
+  saveUnknown(); renderUnknown();
+}
+function pruneUnknown() {          // kho vừa cập nhật có từ đó rồi thì bỏ khỏi danh sách
+  const before = unknown.length;
+  unknown = unknown.filter(u => !knownWord(u.w));
+  if (unknown.length !== before) saveUnknown();
+  renderUnknown();
+}
+function renderUnknown() {
+  $('wd-unk-n').textContent = unknown.length ? '(' + unknown.length + ')' : '';
+  $('wd-unk').innerHTML = unknown.length
+    ? unknown.map(u => `<button type="button" class="chip unk" data-act="add" data-w="${esc(u.w)}">${esc(u.w)}</button>`).join('')
+    : '<div class="empty">Chưa có từ nào ngoài kho</div>';
+  $('wd-unk-btns').hidden = !unknown.length;
+}
+const adding = new Set();
+async function addToKho(n) {
+  if (adding.has(n)) return;
+  if (knownWord(n)) { pruneUnknown(); return; }
+  adding.add(n);
+  try {
+    const r = await fetch(DB + '/words.json', { method: 'POST', body: JSON.stringify({ w: n }) });
+    if (!r.ok) throw new Error('http ' + r.status);
+  } catch (e) { adding.delete(n); toast('Không thêm được vào kho', 'var(--bad)'); return; }
+  adding.delete(n);
+  const p = n.split(' ');
+  wordSet.add(n); canonSet.add(canonW(n));
+  if (!byFirst.has(p[0])) byFirst.set(p[0], []);
+  byFirst.get(p[0]).push(n);
+  totalWords++;
+  unknown = unknown.filter(u => u.w !== n); saveUnknown(); renderUnknown();
+  toast('✓ Đã thêm vào kho: ' + n);
+  if (curWord) render();
+}
+$('wd-unk').onclick = e => {
+  const el = e.target.closest('[data-act="add"]'); if (!el) return;
+  const w = el.dataset.w;
+  if (adding.has(w) || !confirm('Thêm “' + w + '” vào kho từ?')) return;
+  addToKho(w);
+};
+$('wd-unk-copy').onclick = () => copyText(unknown.map(u => u.w).join('\n')).then(ok => toast(ok ? '✓ Đã chép ' + unknown.length + ' từ' : 'Không chép được', ok ? 'var(--good)' : 'var(--bad)'));
+$('wd-unk-clear').onclick = () => { unknown = []; saveUnknown(); renderUnknown(); toast('Đã xóa danh sách', 'var(--warn)'); };
+
+function renderHist() {
+  $('wd-hist-n').textContent = hist.length ? '(' + hist.length + ')' : '';
+  $('wd-hist').innerHTML = hist.length
+    ? hist.map((h, i) => (i ? '<i class="wd-sep">›</i>' : '') +
+        `<span class="wd-h${h.me ? ' me' : ''}${i === hist.length - 1 ? ' last' : ''}">${esc(h.w)}</span>`).join('')
+    : '<span class="wd-empty">Chưa có từ nào</span>';
+  const hb = $('wd-hist'); hb.scrollLeft = hb.scrollWidth;   // cuộn tới từ mới nhất (bên phải)
+}
+
+// ===== AI: negamax + alpha-beta + đào sâu dần =====
+const AI_WIN = 1000, BUDGET = 220, TIMEOUT = { t: 1 };
+let deadline = 0, nodes = 0;
+function avail(ns, ex, u, lim) {
+  const l = byFirst.get(ns); if (!l) return 0; let c = 0;
+  for (const w of l) if (w !== ex && !u.has(w) && ++c >= lim) return c;
+  return c;
+}
+function opts(word, u) { return (byFirst.get(word.split(' ')[1]) || []).filter(w => w !== word && !u.has(w)); }
+function search(word, u, depth, oppMove, alpha, beta) {
+  if ((++nodes & 255) === 0 && performance.now() > deadline) throw TIMEOUT;
+  const o = opts(word, u);
+  if (!o.length) return oppMove ? AI_WIN + depth : -(AI_WIN + depth);
+  const info = [];
+  for (const w of o) {
+    const rc = avail(w.split(' ')[1], w, u, 3);
+    if (rc === 0) return oppMove ? -(AI_WIN + depth - 1) : (AI_WIN + depth - 1);
+    info.push({ w, rc, t: trapSet.has(w) ? 1 : 0 });
   }
-  function contCountOf(entry) {
-    const ns = lookupDir === 'after' ? entry.last : entry.first;
-    const map = lookupDir === 'after' ? contCountAfter : contCountBefore;
-    return map.get(ns) || 0;
+  if (depth <= 0) {
+    let tr = 0, near = 0;
+    for (const x of info) { if (x.t) tr++; if (x.rc === 1) near++; }
+    const adv = Math.min(o.length, 12) * 6 + Math.min(tr, 5) * 12 + Math.min(near, 4) * 20;
+    return oppMove ? -adv : adv;
   }
-  function isDeadEndEntry(entry) {
-    // Cụt = không còn từ nào nối tiếp (contCount không gồm chính entry)
-    return contCountOf(entry) === 0;
+  info.sort((a, b) => (b.t - a.t) || (a.rc - b.rc));
+  const n = Math.min(depth >= 3 ? 8 : 6, info.length);
+  let b = oppMove ? Infinity : -Infinity;
+  for (let i = 0; i < n; i++) {
+    const w = info[i].w; u.add(w);
+    let s; try { s = search(w, u, depth - 1, !oppMove, alpha, beta); } finally { u.delete(w); }
+    if (oppMove) { if (s < b) b = s; if (b < beta) beta = b; }
+    else { if (s > b) b = s; if (b > alpha) alpha = b; }
+    if (beta <= alpha) break;
   }
-  function isRiskyTrap(entry) {
-    const ns = lookupDir === 'after' ? entry.last : entry.first;
-    const map = lookupDir === 'after' ? byFirst : byLast;
-    const opts = map.get(ns) || [];
-    if (opts.length === 0) return false;
-    // 1) có continuation là bẫy
-    if ((lookupDir === 'after' ? trapAfter : trapBefore).get(ns)) return true;
-    // 2) có continuation cụt
-    for (let i = 0; i < opts.length; i++) {
-      const o = opts[i];
-      if (o.word === entry.word) continue;
-      if (isDeadEndEntry(o)) return true;
-    }
-    return false;
+  return b;
+}
+const disp = v => v >= 900 ? 999 : v <= -900 ? -999 : Math.round(v);
+const deadEnd = (w, u) => avail(w.split(' ')[1], w, u, 1) === 0;
+function risky(w, u) {
+  const a = (byFirst.get(w.split(' ')[1]) || []).filter(x => !u.has(x));
+  if (!a.length) return null;
+  if (a.some(x => deadEnd(x, u))) return 'risk-dead';
+  if (a.some(x => trapSet.has(x))) return 'risk-trap';
+  return null;
+}
+function classify(list) {
+  const g = { dead: [], trap: [], ok: [], 'risk-trap': [], 'risk-dead': [] };
+  for (const w of list) {
+    if (trapSet.has(w)) g.trap.push(w);
+    else if (deadEnd(w, used)) g.dead.push(w);
+    else g[risky(w, used) || 'ok'].push(w);
   }
-
-  function render(filter) {
-    const f = (filter || '').trim().toLowerCase();
-    const trapOnly = trapOnlyEl.checked;
-    let filtered = allWords;
-
-    // Không render 48k dòng khi không lọc — quá nặng DOM
-    if (!f && !trapOnly) {
-      countEl.textContent = allWords.length + ' từ';
-      listEl.innerHTML = `<div class="empty">Kho có <strong>${allWords.length.toLocaleString('vi')}</strong> từ.<br>Gõ ô tìm kiếm hoặc bật «chỉ bẫy» để xem danh sách.</div>`;
-      return;
-    }
-
-    if (trapOnly) filtered = filtered.filter(x => x.trap);
-    if (f) filtered = filtered.filter(x => x.word.toLowerCase().includes(f));
-
-    countEl.textContent = allWords.length + ' từ' + ` · ${filtered.length} khớp`;
-
-    if (filtered.length === 0) {
-      listEl.innerHTML = `<div class="empty">Không tìm thấy từ khớp.</div>`;
-      return;
-    }
-
-    const shown = filtered.slice(0, LIST_PAGE);
-    const extra = filtered.length > LIST_PAGE
-      ? `<div class="empty" style="padding:16px;">… và ${filtered.length - LIST_PAGE} từ nữa. Thu hẹp bộ lọc để xem hết.</div>`
-      : '';
-
-    listEl.innerHTML = shown.map((x, i) => `
-      <div class="item">
-        <div><span class="idx">${String(i + 1).padStart(3, '0')}</span><span class="w">${escapeHtml(x.word)}</span>${x.trap ? '<span class="badge-trap">🪤 bẫy</span>' : ''}</div>
-        <div class="actions">
-          <button class="trap-toggle ${x.trap ? 'on' : ''}" data-word="${escapeHtml(x.word)}" data-trap="${x.trap}" title="Đánh dấu / bỏ đánh dấu bẫy">🪤</button>
-          <button class="del" data-word="${escapeHtml(x.word)}">Xoá</button>
-        </div>
-      </div>
-    `).join('') + extra;
-  }
-
-  function escapeHtml(s) {
-    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  }
-
-  wordsRef.on('value', snapshot => {
-    const val = snapshot.val() || {};
-    const arr = [];
-    for (const k in val) {
-      const v = val[k];
-      if (typeof v === 'string') {
-        if (v) arr.push({ word: v, trap: false });
-      } else if (v && v.w) {
-        arr.push({ word: v.w, trap: !!v.trap });
-      }
-    }
-    // sort nhanh hơn localeCompare('vi') trên 48k phần tử
-    arr.sort((a, b) => a.word < b.word ? -1 : a.word > b.word ? 1 : 0);
-    allWords = arr;
-    rebuildLookupIndex();
-    render(searchEl.value);
-    if (document.getElementById('lookupInput').value.trim()) doLookup();
-  }, err => {
-    listEl.innerHTML = `<div class="empty">Lỗi tải dữ liệu: ${err.message}</div>`;
-  });
-
-  listEl.addEventListener('click', e => {
-    const delBtn = e.target.closest('.del');
-    if (delBtn) {
-      const word = delBtn.dataset.word;
-      wordsRef.child(toKey(word)).remove()
-        .then(() => setStatus(`Đã xoá "${word}"`))
-        .catch(err => setStatus('Lỗi xoá: ' + err.message, true));
-      return;
-    }
-    const trapBtn = e.target.closest('.trap-toggle');
-    if (trapBtn) {
-      const word = trapBtn.dataset.word;
-      const newTrap = trapBtn.dataset.trap !== 'true';
-      wordsRef.child(toKey(word)).set({ w: word, trap: newTrap })
-        .then(() => setStatus(newTrap ? `Đã đánh dấu bẫy "${word}"` : `Đã bỏ đánh dấu bẫy "${word}"`))
-        .catch(err => setStatus('Lỗi cập nhật: ' + err.message, true));
-      return;
-    }
-  });
-
-  let searchTimer = null;
-  searchEl.addEventListener('input', () => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => render(searchEl.value), 180);
-  });
-  trapOnlyEl.addEventListener('change', () => render(searchEl.value));
-
-  document.getElementById('addOne').addEventListener('click', addSingle);
-  singleInput.addEventListener('keydown', e => { if (e.key === 'Enter') addSingle(); });
-
-  function addSingle() {
-    const word = normalize(singleInput.value);
-    if (!word) return;
-    wordsRef.child(toKey(word)).set({ w: word, trap: singleTrap.checked })
-      .then(() => { setStatus(`Đã thêm "${word}"${singleTrap.checked ? ' (🪤 bẫy)' : ''}`); singleInput.value = ''; singleTrap.checked = false; singleInput.focus(); })
-      .catch(err => setStatus('Lỗi thêm: ' + err.message, true));
-  }
-
-  document.getElementById('addBulk').addEventListener('click', () => {
-    const lines = bulkInput.value.split('\n').map(normalize).filter(Boolean);
-    if (lines.length === 0) return;
-    const trap = bulkTrap.checked;
-    const updates = {};
-    lines.forEach(w => { updates[toKey(w)] = { w: w, trap: trap }; });
-    wordsRef.update(updates)
-      .then(() => { setStatus(`Đã thêm ${lines.length} từ${trap ? ' (🪤 bẫy)' : ''}`); bulkInput.value = ''; bulkTrap.checked = false; })
-      .catch(err => setStatus('Lỗi thêm hàng loạt: ' + err.message, true));
-  });
-
-  // —— Đánh dấu / bỏ đánh dấu bẫy theo âm cuối (giống trang Nối Từ) ——
-  const trapSyllableEl = document.getElementById('trapSyllable');
-  const trapStatusEl = document.getElementById('trapStatus');
-
-  function setTrapStatus(msg, isErr) {
-    trapStatusEl.textContent = msg;
-    trapStatusEl.className = isErr ? 'err' : '';
-    if (msg) setTimeout(() => { if (trapStatusEl.textContent === msg) trapStatusEl.textContent = ''; }, 4000);
-  }
-
-  function wordsEndingWith(syllable) {
-    const s = syllable.trim().toLowerCase();
-    if (!s) return [];
-    return byLast.get(s) || [];
-  }
-
-  function bulkSetTrap(mark) {
-    const raw = trapSyllableEl.value;
-    const syllable = normalize(raw).split(' ').pop().toLowerCase();
-    if (!syllable) {
-      setTrapStatus('Nhập một âm tiết trước.', true);
-      return;
-    }
-    const matches = wordsEndingWith(syllable);
-    if (matches.length === 0) {
-      setTrapStatus(`Không có từ nào trong kho có âm cuối "${syllable}".`, true);
-      return;
-    }
-    const updates = {};
-    let changed = 0;
-    matches.forEach(x => {
-      if (mark && !x.trap) { updates[toKey(x.word)] = { w: x.word, trap: true }; changed++; }
-      else if (!mark && x.trap) { updates[toKey(x.word)] = { w: x.word, trap: false }; changed++; }
-    });
-    if (changed === 0) {
-      setTrapStatus(mark
-        ? `Tất cả ${matches.length} từ âm cuối "${syllable}" đã được đánh dấu bẫy rồi.`
-        : `Không có từ nào âm cuối "${syllable}" đang được đánh dấu bẫy.`);
-      return;
-    }
-    wordsRef.update(updates)
-      .then(() => {
-        setTrapStatus(mark
-          ? `⭐ Đã đánh dấu bẫy ${changed} từ có âm cuối "${syllable}" (trong ${matches.length} từ khớp).`
-          : `🗑️ Đã bỏ đánh dấu bẫy ${changed} từ có âm cuối "${syllable}".`);
-      })
-      .catch(err => setTrapStatus('Lỗi cập nhật: ' + err.message, true));
-  }
-
-  document.getElementById('trapMarkBtn').addEventListener('click', () => bulkSetTrap(true));
-  document.getElementById('trapUnmarkBtn').addEventListener('click', () => bulkSetTrap(false));
-  trapSyllableEl.addEventListener('keydown', e => {
-    if (e.key === 'Enter') bulkSetTrap(true);
-  });
-
-  // —— Tìm từ nối (y chang trang Nối Từ) ——
-  const lookupInput = document.getElementById('lookupInput');
-  const lookupMsg = document.getElementById('lookupMsg');
-  const suggestList = document.getElementById('suggestList');
-
-  function showLookupMsg(text, type) {
-    lookupMsg.textContent = text;
-    lookupMsg.className = 'show ' + type;
-  }
-  function hideLookupMsg() { lookupMsg.className = ''; lookupMsg.textContent = ''; }
-
-  function getSuggestions(syllable, limit) {
-    limit = limit || 60;
-    const map = lookupDir === 'after' ? byFirst : byLast;
-    let list = (map.get(syllable) || []).slice();
-    // Sắp xếp: bẫy trước → ít đường nối tiếp hơn (dùng count đã cache)
-    list.sort((a, b) => {
-      if (a.trap !== b.trap) return a.trap ? -1 : 1;
-      return contCountOf(a) - contCountOf(b);
-    });
-    return list.slice(0, limit);
-  }
-
-  function renderSuggestions(syllable) {
-    const map = lookupDir === 'after' ? byFirst : byLast;
-    const total = (map.get(syllable) || []).length;
-    const sugg = getSuggestions(syllable, 60);
-    suggestList.innerHTML = '';
-    if (sugg.length === 0) {
-      suggestList.innerHTML = '<span class="hint" style="margin:0;">Không tìm thấy từ nào có thể nối tiếp 😅</span>';
-      return;
-    }
-
-    const frag = document.createDocumentFragment();
-    for (let i = 0; i < sugg.length; i++) {
-      const x = sugg[i];
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      const dead = isDeadEndEntry(x);
-      const risky = !dead && isRiskyTrap(x);
-
-      if (x.trap) {
-        chip.className = 'suggest-chip trap-marked';
-        chip.innerHTML = '<span class="star-mark">★</span>' + escapeHtml(x.word);
-        chip.title = 'Từ bẫy đã đánh dấu';
-      } else if (dead) {
-        chip.className = 'suggest-chip dead-end';
-        chip.innerHTML = '<span class="x-mark">✗</span>' + escapeHtml(x.word);
-        chip.title = 'Từ cụt — hết đường đi tiếp';
-      } else if (risky) {
-        chip.className = 'suggest-chip trap-risk';
-        chip.innerHTML = '<span class="x-mark">✗</span>' + escapeHtml(x.word);
-        chip.title = 'Không nên dùng: đối thủ có thể chọn từ cụt hoặc từ bẫy';
-      } else {
-        chip.className = 'suggest-chip';
-        chip.textContent = x.word;
-      }
-
-      const delBtn = document.createElement('span');
-      delBtn.className = 'chip-del';
-      delBtn.textContent = '✕';
-      delBtn.title = 'Xoá "' + x.word + '" khỏi kho';
-      delBtn.addEventListener('click', e => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!confirm('Xoá "' + x.word + '" khỏi kho từ?')) return;
-        wordsRef.child(toKey(x.word)).remove()
-          .then(() => setStatus('Đã xoá "' + x.word + '"'))
-          .catch(err => setStatus('Lỗi xoá: ' + err.message, true));
+  return g;
+}
+function pickDeep(g) {
+  const all = [...g.dead, ...g.trap, ...g.ok, ...g['risk-trap'], ...g['risk-dead']];
+  if (!all.length) return null;
+  const u = new Set(used), deadSet = new Set(g.dead);
+  const cands = all.map(w => {
+    const on = avail(w.split(' ')[1], w, u, 20), t = trapSet.has(w) ? 1 : 0;
+    return { w, bonus: t * 40 + (20 - on) * 4, key: (deadSet.has(w) ? 1000 : 0) + t * 200 - on };
+  }).sort((a, b) => b.key - a.key).slice(0, 30);
+  deadline = performance.now() + BUDGET; nodes = 0;
+  let res = null, reached = 0;
+  for (let d = 1; d <= 8; d++) {
+    let cur;
+    try {
+      cur = cands.map(c => {
+        u.add(c.w); let raw;
+        try { raw = search(c.w, u, d - 1, true, -Infinity, Infinity); } finally { u.delete(c.w); }
+        return { w: c.w, raw, bonus: c.bonus };
       });
-      chip.appendChild(delBtn);
-
-      chip.addEventListener('click', e => {
-        if (e.target.closest('.chip-del')) return;
-        const next = nextSyllableOf(x);
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(x.word).catch(() => {});
-        }
-        lookupInput.value = next;
-        doLookup();
-      });
-      frag.appendChild(chip);
-    }
-    if (total > 60) {
-      const more = document.createElement('span');
-      more.className = 'hint';
-      more.style.margin = '4px 0 0';
-      more.textContent = `… và ${total - 60} từ nữa`;
-      frag.appendChild(more);
-    }
-    suggestList.appendChild(frag);
+    } catch (e) { if (e !== TIMEOUT) throw e; break; }
+    res = cur; reached = d;
+    if (cur.some(r => r.raw >= 900)) break;
   }
+  if (!res) { res = cands.map(c => ({ w: c.w, raw: c.bonus, bonus: 0 })); reached = 0; }
+  res.forEach(r => r.total = Math.abs(r.raw) >= 900 ? r.raw : r.raw + r.bonus);
+  const rk = res.slice().sort((a, b) => b.total - a.total), top = rk[0];
+  let kind = 'ok';
+  for (const k of ['dead', 'trap', 'risk-trap', 'risk-dead']) if (g[k].includes(top.w)) { kind = k; break; }
+  let why;
+  if (top.raw >= 900) {
+    const plies = reached - (top.raw - AI_WIN), m = Math.max(1, Math.round((plies + 1) / 2));
+    if (m <= 1 || kind === 'dead') { kind = 'dead'; why = '✓ Cụt đường ngay — đối thủ hết nước nối'; }
+    else { if (kind === 'ok' || kind.startsWith('risk')) kind = 'trap'; why = `★ Thắng ép sau ${m} nước của bạn (sâu ${reached})`; }
+  } else if (top.raw <= -900) why = `⚠ Mọi nước đều có thể bị ép thua (sâu ${reached})`;
+  else why = `Đã kiểm tra ${reached} lượt, không có đòn ép thua`;
+  return { w: top.w, kind, why, score: disp(top.total), alt: rk.slice(1, 4).map(r => ({ w: r.w, s: disp(r.total) })) };
+}
 
-  function doLookup() {
-    let syllable = normalize(lookupInput.value).toLowerCase();
-    if (!syllable) {
-      hideLookupMsg();
-      suggestList.innerHTML = '<span class="hint" style="margin:0;">Nhập một âm tiết ở trên để xem gợi ý.</span>';
-      return;
-    }
-    syllable = syllable.split(' ').pop();
-    const map = lookupDir === 'after' ? byFirst : byLast;
-    const total = (map.get(syllable) || []).length;
-    if (total === 0) {
-      showLookupMsg('❌ Không có từ nào ' + (lookupDir === 'after' ? 'bắt đầu' : 'kết thúc') + ' bằng "' + syllable + '".', 'err');
-      suggestList.innerHTML = '<span class="hint" style="margin:0;">Không tìm thấy từ nào có thể nối tiếp 😅</span>';
-      return;
-    }
-    showLookupMsg('✅ Có ' + total + ' từ ' + (lookupDir === 'after' ? 'bắt đầu' : 'kết thúc') + ' bằng "' + syllable + '".', 'ok');
-    renderSuggestions(syllable);
+// ===== Hiển thị Nối Từ =====
+const LABEL = { dead: 'Cụt', trap: 'Bẫy', ok: 'Ổn', 'risk-trap': 'Rủi ro', 'risk-dead': 'Rủi ro' };
+const MARK = { dead: '✓', trap: '★', ok: '', 'risk-trap': '✗', 'risk-dead': '✗' };
+const chip = (full, kind) =>
+  `<button type="button" class="chip k-${kind}" data-full="${esc(full)}">${MARK[kind] ? `<span class="mk">${MARK[kind]}</span>` : ''}${esc(full.split(' ')[1])}</button>`;
+
+function pick(w, el) {
+  mine.add(w); opp.delete(w); used.add(w); updCnt();
+  if (el) el.classList.add(el.id === 'wd-ai-best' ? 'wd-picked-self' : 'picked');
+  if (el && el.id === 'wd-ai-best') $('wd-ai-row').classList.add('wd-picked');
+}
+
+let sheetFull = '', sheetEl = null;
+function openSheet(full, el) {
+  const key = full.split(' ')[1];
+  const list = (byFirst.get(key) || []).filter(w => !used.has(w));
+  sheetFull = full; sheetEl = el;
+  $('sheet-title').textContent = '“' + key + '” · ' + list.length + ' từ';
+  const g = classify(list);
+  const grp = (arr, k, title) => arr.length
+    ? `<div class="sg k-${k}"><div class="sg-t">${title} (${arr.length})</div><div class="sg-w">${arr.map(w => `<span class="sw">${esc(w.split(' ')[1])}</span>`).join('')}</div></div>` : '';
+  $('sheet-body').innerHTML = list.length
+    ? grp(g.dead, 'dead', '✓ Cụt: đối thủ hết đường') + grp(g.trap, 'trap', '★ Bẫy') + grp(g.ok, 'ok', 'Thường') +
+      grp(g['risk-trap'], 'risk-trap', '✗ Nên tránh (dẫn tới bẫy)') + grp(g['risk-dead'], 'risk-dead', '✗ Nên tránh (dẫn tới cụt)')
+    : `<div class="empty err">Hết từ nối sau “${esc(key)}”</div>`;
+  $('sheet-body').scrollTop = 0;
+  $('wd-sheet').hidden = false;
+}
+const hidePreview = () => { $('wd-sheet').hidden = true; sheetFull = ''; sheetEl = null; };
+$('sheet-x').onclick = hidePreview;
+$('wd-sheet').onclick = e => { if (e.target === $('wd-sheet')) hidePreview(); };
+$('sheet-pick').onclick = () => { if (sheetFull) pick(sheetFull, sheetEl); hidePreview(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hidePreview(); });
+
+function setAI(best) {
+  const row = $('wd-ai-row'), b = $('wd-ai-best'), r = $('wd-ai-reason'), alt = $('wd-ai-alt');
+  row.classList.remove('wd-picked'); b.classList.remove('wd-picked-self');
+  if (!best) {
+    row.className = 'k-ok';
+    b.textContent = 'Hết nước đi'; b.onclick = null;
+    r.textContent = ''; alt.innerHTML = ''; $('wd-alt-wrap').hidden = true; $('wd-why').textContent = ''; return;
   }
+  row.className = 'k-' + best.kind + ' pop';
+  b.textContent = best.w.split(' ')[1]; b.title = best.why;
+  say(best.w, 'nv|' + curWord + '|' + best.w);   // đọc cả 2 tiếng
+  r.textContent = (MARK[best.kind] ? MARK[best.kind] + ' ' : '') + LABEL[best.kind] + ' · ' + best.score;
+  $('wd-why').textContent = best.why;
+  b.onclick = () => pick(best.w, b);
+  $('wd-alt-wrap').hidden = !best.alt.length;
+  alt.innerHTML = best.alt.map(a => `<button type="button" class="chip k-ok" data-full="${esc(a.w)}">${esc(a.w.split(' ')[1])}<i>${a.s}</i></button>`).join('');
+  alt.querySelectorAll('.chip').forEach(el => el.onclick = () => openSheet(el.dataset.full, el));
+}
 
-  document.getElementById('lookupBtn').addEventListener('click', doLookup);
-  lookupInput.addEventListener('keydown', e => { if (e.key === 'Enter') doLookup(); });
-  document.querySelectorAll('.dir-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.dir-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      lookupDir = btn.dataset.dir;
-      doLookup();
-    });
-  });
+function render() {
+  const box = $('wd-suggest');
+  if (!dictReady) { box.innerHTML = '<div class="empty">Đang tải kho từ...</div>'; setAI(null); return; }
+  const n = norm(curWord), p = n.split(' ');
+  if (p.length !== 2) { box.innerHTML = '<div class="empty">Từ không hợp lệ (cần đúng 2 âm tiết)</div>'; setAI(null); return; }
+  const list = (byFirst.get(p[1]) || []).filter(w => w !== n && !used.has(w));
+  if (!list.length) { box.innerHTML = `<div class="empty err">Hết từ nối cho “${esc(p[1])}”</div>`; setAI(null); return; }
+
+  const g = classify(list);
+  setAI(pickDeep(g));
+
+  const LIM = 14;
+  box.innerHTML = ['dead', 'trap', 'ok', 'risk-trap', 'risk-dead'].map(k => g[k].slice(0, LIM).map(w => chip(w, k)).join('')).join('');
+  box.querySelectorAll('.chip').forEach(el => { el.onclick = () => openSheet(el.dataset.full, el); });
+}
+
+updCnt(); renderHist(); renderUnknown(); setStatus();
 </script>
 </body>
 </html>
