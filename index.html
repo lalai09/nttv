@@ -188,6 +188,20 @@ h2.sec{margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted)}
 .sw{padding:5px 11px 5px 9px;border-radius:9px;background:var(--surface2);border-left:4px solid var(--k);font-size:16px;font-weight:700}
 #sheet-pick{min-height:50px;border-radius:14px;background:var(--tile);color:var(--tile-ink);font-weight:800;font-size:16px}
 #sheet-pick:active{transform:scale(.98)}
+/* ===== Hộp xác nhận thêm từ ===== */
+#wd-confirm{position:fixed;inset:0;z-index:1100;background:rgba(5,4,10,.65);display:flex;align-items:center;justify-content:center;padding:20px}
+#cf-card{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;
+  background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:22px 18px 18px;box-shadow:0 20px 48px rgba(0,0,0,.6);animation:cfIn .18s ease-out}
+@keyframes cfIn{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}
+#cf-title{font-size:14px;font-weight:700;color:var(--muted)}
+#cf-word{max-width:100%;padding:12px 22px;border-radius:14px;background:var(--tile);color:var(--tile-ink);
+  font-family:var(--display);font-weight:800;font-size:30px;line-height:1.15;box-shadow:0 4px 0 rgba(0,0,0,.35);word-break:break-word}
+#cf-desc{margin:0;font-size:14px;color:var(--muted)}
+#cf-btns{display:flex;gap:8px;width:100%;margin-top:4px}
+#cf-btns button{flex:1;min-height:48px;border-radius:14px;font-weight:800;font-size:15px}
+#cf-btns button:active{transform:scale(.97)}
+#cf-no{border:1.5px solid var(--line);color:var(--muted)}
+#cf-yes{background:var(--ok);color:var(--ink)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -260,6 +274,17 @@ h2.sec{margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted)}
   </section>
 
 </main>
+<div id="wd-confirm" hidden>
+  <div id="cf-card" role="alertdialog" aria-modal="true" aria-labelledby="cf-title" aria-describedby="cf-desc">
+    <div id="cf-title">Thêm từ này vào kho?</div>
+    <div id="cf-word"></div>
+    <p id="cf-desc">Từ sẽ được lưu vào kho chung và dùng ngay cho gợi ý.</p>
+    <div id="cf-btns">
+      <button id="cf-no" type="button">Hủy</button>
+      <button id="cf-yes" type="button">Thêm vào kho</button>
+    </div>
+  </div>
+</div>
 <div id="wd-sheet" hidden>
   <div id="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
     <div id="sheet-head">
@@ -600,10 +625,25 @@ async function addToKho(n) {
   toast('✓ Đã thêm vào kho: ' + n);
   if (curWord) render();
 }
-$('wd-unk').onclick = e => {
+let cfResolve = null;
+function askAdd(w) {
+  return new Promise(res => {
+    if (cfResolve) cfResolve(false);
+    cfResolve = res;
+    $('cf-word').textContent = w;
+    $('wd-confirm').hidden = false;
+    $('cf-no').focus();
+  });
+}
+function closeConfirm(v) { $('wd-confirm').hidden = true; const r = cfResolve; cfResolve = null; if (r) r(v); }
+$('cf-yes').onclick = () => closeConfirm(true);
+$('cf-no').onclick = () => closeConfirm(false);
+$('wd-confirm').onclick = e => { if (e.target === $('wd-confirm')) closeConfirm(false); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('wd-confirm').hidden) closeConfirm(false); });
+$('wd-unk').onclick = async e => {
   const el = e.target.closest('[data-act="add"]'); if (!el) return;
   const w = el.dataset.w;
-  if (adding.has(w) || !confirm('Thêm “' + w + '” vào kho từ?')) return;
+  if (adding.has(w) || !(await askAdd(w))) return;
   addToKho(w);
 };
 $('wd-unk-copy').onclick = () => copyText(unknown.map(u => u.w).join('\n')).then(ok => toast(ok ? '✓ Đã chép ' + unknown.length + ' từ' : 'Không chép được', ok ? 'var(--good)' : 'var(--bad)'));
