@@ -133,9 +133,12 @@ h2.sec{margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted)}
 /* ===== Lịch sử ===== */
 .hist-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .hist-head .sec{margin:0}
-#wd-hist{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;padding:9px 12px;min-height:52px;
+#wd-hist{display:flex;flex-direction:column;gap:10px;padding:9px 12px;min-height:52px;
   background:var(--surface);border:1px solid var(--line);border-radius:14px}
-#wd-hist::-webkit-scrollbar{display:none}
+.hstrip{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none}
+.hstrip::-webkit-scrollbar{display:none}
+.hlbl{margin-bottom:5px;font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--muted)}
+.hrow.prev .hstrip{opacity:.55}
 .wd-h{flex:none;padding:5px 11px;border-radius:999px;background:var(--surface2);font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap}
 .wd-h.me{background:rgba(110,231,160,.15);color:var(--good)}
 .wd-h.last{color:var(--text);box-shadow:inset 0 0 0 1.5px currentColor}
@@ -403,10 +406,11 @@ showSpeak();
 // ===== Trạng thái Nối Từ =====
 const used = new Set(), mine = new Set(), opp = new Set();
 let curWord = '', lastT = 0, hist = [];
+let prevHist = [];   // chuỗi liền trước (lưu lại khi sang chuỗi mới)
 const updCnt = () => { $('wd-my-n').textContent = mine.size; $('wd-opp-n').textContent = opp.size; };
 
 function doClear() {
-  used.clear(); mine.clear(); opp.clear(); hist = []; updCnt(); renderHist();
+  used.clear(); mine.clear(); opp.clear(); hist = []; prevHist = []; updCnt(); renderHist();
   anchor = '';
   toast('Đã xóa', 'var(--warn)');
   if (curWord) render();
@@ -557,7 +561,13 @@ function onWord(w) {
   const n = norm(w), valid = isVnWord(n);   // đúng 2 âm tiết và đúng định dạng tiếng Việt
   // đối chiếu với từ gần nhất đã nhận VÀ từ đang hiện, để một lần đọc nhầm không làm hỏng chuỗi
   const chain = valid && !!anchor && (isChain(anchor, n) || (curWord && isChain(curWord, n)));
-  const start = valid && !anchor;   // chưa có mốc (đầu ván / sau khi xóa) thì từ hợp lệ đầu tiên làm mốc
+  // đổi sang chuỗi mới: từ hợp lệ, CÓ trong kho (tránh OCR đọc nhầm), không nối được và khác từ đang hiện => tự xóa phiên cũ
+  if (valid && anchor && !chain && n !== anchor && n !== norm(curWord) && knownWord(n)) {
+    if (hist.length) prevHist = hist;   // giữ lại chuỗi vừa rồi (tối đa 2 chuỗi: trước + hiện tại)
+    used.clear(); mine.clear(); opp.clear(); hist = []; anchor = '';
+    toast('Chuỗi mới · đã lưu chuỗi trước', 'var(--warn)');
+  }
+  const start = valid && !anchor;   // chưa có mốc (đầu ván / sau khi xóa / chuỗi mới) thì từ hợp lệ đầu tiên làm mốc
   curWord = w;
   if (chain || start) anchor = n;
   if (chain) {                      // chỉ từ nối tiếp mới tính là đã dùng
@@ -649,13 +659,19 @@ $('wd-unk').onclick = async e => {
 $('wd-unk-copy').onclick = () => copyText(unknown.map(u => u.w).join('\n')).then(ok => toast(ok ? '✓ Đã chép ' + unknown.length + ' từ' : 'Không chép được', ok ? 'var(--good)' : 'var(--bad)'));
 $('wd-unk-clear').onclick = () => { unknown = []; saveUnknown(); renderUnknown(); toast('Đã xóa danh sách', 'var(--warn)'); };
 
+function histRow(list, cls, label, isCur) {
+  const chips = list.map((h, i) => (i ? '<i class="wd-sep">›</i>' : '') +
+    `<span class="wd-h${h.me ? ' me' : ''}${isCur && i === list.length - 1 ? ' last' : ''}">${esc(h.w)}</span>`).join('');
+  return `<div class="hrow ${cls}">${label ? '<div class="hlbl">' + label + '</div>' : ''}<div class="hstrip">${chips}</div></div>`;
+}
 function renderHist() {
   $('wd-hist-n').textContent = hist.length ? '(' + hist.length + ')' : '';
-  $('wd-hist').innerHTML = hist.length
-    ? hist.map((h, i) => (i ? '<i class="wd-sep">›</i>' : '') +
-        `<span class="wd-h${h.me ? ' me' : ''}${i === hist.length - 1 ? ' last' : ''}">${esc(h.w)}</span>`).join('')
-    : '<span class="wd-empty">Chưa có từ nào</span>';
-  const hb = $('wd-hist'); hb.scrollLeft = hb.scrollWidth;   // cuộn tới từ mới nhất (bên phải)
+  const both = prevHist.length && hist.length;
+  let html = '';
+  if (prevHist.length) html += histRow(prevHist, 'prev', 'Chuỗi trước', false);
+  if (hist.length) html += histRow(hist, 'cur', both ? 'Chuỗi hiện tại' : '', true);
+  $('wd-hist').innerHTML = html || '<span class="wd-empty">Chưa có từ nào</span>';
+  $('wd-hist').querySelectorAll('.hstrip').forEach(el => { el.scrollLeft = el.scrollWidth; });   // cuộn tới từ mới nhất (bên phải)
 }
 
 // ===== AI: negamax + alpha-beta + đào sâu dần =====
