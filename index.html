@@ -212,15 +212,15 @@ h2.sec::before{content:'';width:4px;height:13px;border-radius:2px;background:var
 #cf-no{border:1px solid var(--line);color:var(--muted);background:var(--surface2)}
 #cf-yes{background:var(--rainbow);background-size:200% 100%;animation:flow 6s linear infinite;color:#1a1530}
 
-/* Chọn từ đúng chính tả: ô tròn, mỗi hàng tối đa 3, hàng lẻ căn giữa (4 = 3+1, 5 = 3+2) */
+/* Chọn từ đúng chính tả: ô bo tròn hai đầu, mỗi hàng tối đa 3, hàng lẻ căn giữa (4 = 3+1, 5 = 3+2) */
 .sp-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;padding:4px 0}
-.sp-opt{flex:0 0 calc((100% - 20px) / 3);aspect-ratio:1/1;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;padding:8px;text-align:center;overflow-wrap:anywhere;color:var(--text);
-  font-family:var(--display);font-weight:800;font-size:clamp(15px,4.8vw,23px);line-height:1.1;
-  background:radial-gradient(circle at 30% 25%,var(--surface2),var(--surface));border:2px solid var(--line)}
-.sp-opt:active{transform:scale(.95)}
-.sp-opt.good{color:#05261a;border-color:#a6f5c8;background:radial-gradient(circle at 30% 25%,#7bf5b3,#22c47c);
-  box-shadow:0 0 0 2px rgba(110,231,160,.55),0 14px 30px -10px #2fd08a}
+.sp-opt{flex:0 0 calc((100% - 20px) / 3);min-height:54px;border-radius:999px;
+  display:flex;align-items:center;justify-content:center;padding:8px 12px;text-align:center;overflow-wrap:anywhere;color:var(--text);
+  font-family:var(--display);font-weight:800;font-size:clamp(15px,4.8vw,22px);line-height:1.1;
+  background:linear-gradient(135deg,var(--surface2),var(--surface));border:2px solid var(--line)}
+.sp-opt:active{transform:scale(.96)}
+.sp-opt.good{color:#05261a;border-color:#a6f5c8;background:linear-gradient(135deg,#7bf5b3,#22c47c);
+  box-shadow:0 0 0 2px rgba(110,231,160,.55),0 12px 26px -10px #2fd08a}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
