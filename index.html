@@ -222,6 +222,20 @@ h2.sec::before{content:'';width:4px;height:13px;border-radius:2px;background:var
 .sp-opt.good{color:#05261a;border-color:#a6f5c8;background:linear-gradient(135deg,#7bf5b3,#22c47c);
   box-shadow:0 0 0 2px rgba(110,231,160,.55),0 12px 26px -10px #2fd08a}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ===== Bố cục thoáng hơn ===== */
+#app{max-width:520px;gap:12px;padding:0 12px}
+.view{gap:12px}
+.card{padding:12px 14px}
+#wd-body-assist>div:not(.card):not(#wd-ai-row){
+  border:1px solid var(--line);border-radius:16px;padding:11px 12px;background:rgba(21,18,42,.65)}
+h2.sec{margin:0 0 9px;font-size:13px}
+#wd-suggest{display:flex;flex-wrap:wrap;gap:7px;max-height:230px;overflow-x:hidden;overflow-y:auto;touch-action:auto;padding:2px 0}
+#wd-suggest .empty{width:100%;text-align:center}
+#wd-legend{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line)}
+#wd-hist{border:0;background:none;padding:0}
+.hint{margin:8px 2px 0}
+#toggles{gap:8px}
 </style>
 </head>
 <body>
@@ -820,7 +834,11 @@ function pickDeep(g) {
     else { if (kind === 'ok' || kind.startsWith('risk')) kind = 'trap'; why = `★ Thắng ép sau ${m} nước của bạn (sâu ${reached})`; }
   } else if (top.raw <= -900) why = `⚠ Mọi nước đều có thể bị ép thua (sâu ${reached})`;
   else why = `Đã kiểm tra ${reached} lượt, không có đòn ép thua`;
-  return { w: top.w, kind, why, score: disp(top.total), alt: rk.slice(1, 4).map(r => ({ w: r.w, s: disp(r.total) })) };
+  return { w: top.w, kind, why, score: disp(top.total), alt: rk.slice(1, 4).map(r => {
+    let k = 'ok';
+    for (const x of ['dead', 'trap', 'risk-trap', 'risk-dead']) if (g[x].includes(r.w)) { k = x; break; }
+    return { w: r.w, s: disp(r.total), kind: k };
+  }) };
 }
 
 // ===== Hiển thị Nối Từ =====
@@ -872,7 +890,7 @@ function setAI(best) {
   $('wd-why').textContent = best.why;
   b.onclick = () => pick(best.w, b);
   $('wd-alt-wrap').hidden = !best.alt.length;
-  alt.innerHTML = best.alt.map(a => `<button type="button" class="chip k-ok" data-full="${esc(a.w)}">${esc(a.w.split(' ')[1])}<i>${a.s}</i></button>`).join('');
+  alt.innerHTML = best.alt.map(a => `<button type="button" class="chip k-${a.kind}" data-full="${esc(a.w)}">${MARK[a.kind] ? `<span class="mk">${MARK[a.kind]}</span>` : ''}${esc(a.w.split(' ')[1])}<i>${a.s}</i></button>`).join('');
   alt.querySelectorAll('.chip').forEach(el => el.onclick = () => openSheet(el.dataset.full, el));
 }
 
@@ -885,10 +903,15 @@ function render() {
   if (!list.length) { box.innerHTML = `<div class="empty err">Hết từ nối cho “${esc(p[1])}”</div>`; setAI(null); return; }
 
   const g = classify(list);
-  setAI(pickDeep(g));
+  const best = pickDeep(g);
+  setAI(best);
 
+  // từ đã hiện ở "Nên nối" và "Lựa chọn khác" thì không lặp lại ở danh sách này
+  const altSet = new Set(best ? [best.w, ...best.alt.map(a => a.w)] : []);
   const LIM = 14;
-  box.innerHTML = ['dead', 'trap', 'ok', 'risk-trap', 'risk-dead'].map(k => g[k].slice(0, LIM).map(w => chip(w, k)).join('')).join('');
+  const html = ['dead', 'trap', 'ok', 'risk-trap', 'risk-dead']
+    .map(k => g[k].filter(w => !altSet.has(w)).slice(0, LIM).map(w => chip(w, k)).join('')).join('');
+  box.innerHTML = html || '<div class="empty">Không còn từ nào khác</div>';
   box.querySelectorAll('.chip').forEach(el => { el.onclick = () => openSheet(el.dataset.full, el); });
 }
 
