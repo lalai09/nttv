@@ -364,7 +364,7 @@ h2.sec{margin:0 0 9px;font-size:13px}
     <div class="mgr-box">
       <h2 class="sec">➕ THÊM / XÓA TỪ (ĐỒNG BỘ FIREBASE)</h2>
       <div id="add-row">
-        <input id="add-in" type="text" enterkeyhint="done" placeholder="Nhập từ ghép 2 âm tiết, vd: an tâm" aria-label="Nhập từ để thêm hoặc xóa"
+        <input id="add-in" type="text" enterkeyhint="done" placeholder="Nhập từ ghép (2 âm tiết trở lên), vd: an tâm, hạnh phúc" aria-label="Nhập từ để thêm hoặc xóa"
           autocomplete="off" autocapitalize="off" spellcheck="false">
         <button id="add-btn" type="button">Thêm</button>
         <button id="del-btn" class="ghost" type="button">Xóa</button>
@@ -447,7 +447,7 @@ let trapSylSet = new Set(TRAP_SYL_DEFAULT.map(canonSyl));
 const remoteSyl = new Set(), keyOf = new Map(), allKeys = new Map(), flagTrap = new Set(), sylKeys = new Map();
 const lastSyl = n => canonSyl(n.slice(n.lastIndexOf(' ') + 1));
 const byFirst = new Map(), trapSet = new Set();
-let wordSet = new Set(), canonSet = new Set(), allSet = new Set(), allSorted = null;
+let wordSet = new Set(), canonSet = new Set(), allSet = new Set(), allCanon = new Set(), allSorted = null;
 const defSyl = new Set(TRAP_SYL_DEFAULT.map(canonSyl)), offSyl = new Set();   // offSyl: âm bẫy có sẵn đã bị xóa
 const calcTrapSyl = () => new Set([...Array.from(defSyl).filter(x => !offSyl.has(x)), ...remoteSyl]);
 let dictReady = false, totalWords = 0;
@@ -496,7 +496,7 @@ function loadWords() {
       byFirst.get(p[0]).push(n);
     }
     for (const n of seen) if (trapSylSet.has(lastSyl(n))) trapSet.add(n);   // từ kết thúc bằng âm tiết bẫy
-    allSet = all; allSorted = null;
+    allSet = all; allSorted = null; allCanon = new Set(Array.from(all, canonW));
     totalWords = all.size; dictReady = true; setStatus(); showTrapN();
     wordSet = seen; canonSet = new Set(Array.from(seen, canonW));
     pendingUnk.splice(0).forEach(noteUnknown);
@@ -739,6 +739,7 @@ function isVnSyl(syl) {
   return false;
 }
 const isVnWord = n => { const p = (n || '').split(' '); return p.length === 2 && p.every(isVnSyl); };
+const isVnPhrase = n => { const p = (n || '').split(' '); return p.length >= 2 && p.every(isVnSyl); };
 
 const isChain = (prev, n) => {
   const a = norm(prev).split(' '), b = n.split(' ');
@@ -790,7 +791,7 @@ let unknown = [];
 try { unknown = JSON.parse(lsGet(UNK_KEY, '[]')) || []; } catch (e) { unknown = []; }
 unknown = unknown.filter(u => u && isVnWord(u.w));
 const pendingUnk = [];
-const knownWord = n => wordSet.has(n) || canonSet.has(canonW(n));
+const knownWord = n => allSet.has(n) || allCanon.has(canonW(n));
 function saveUnknown() { lsSet(UNK_KEY, JSON.stringify(unknown.slice(0, 500))); }
 function noteUnknown(n) {
   if (!dictReady) { pendingUnk.push(n); return; }
@@ -824,12 +825,14 @@ async function addToKho(n, trap, quiet) {
   } catch (e) { adding.delete(n); toast('Không thêm được vào kho', 'var(--bad)'); return; }
   adding.delete(n);
   const p = n.split(' ');
-  wordSet.add(n); canonSet.add(canonW(n));
-  if (trap) flagTrap.add(n);
-  if (trap || trapSylSet.has(lastSyl(n))) trapSet.add(n);
-  if (!byFirst.has(p[0])) byFirst.set(p[0], []);
-  byFirst.get(p[0]).push(n);
-  allSet.add(n); allSorted = null; totalWords = allSet.size; showTotal(); setStatus();
+  if (p.length === 2) {   // chỉ từ 2 âm tiết mới vào chỉ mục nối từ
+    wordSet.add(n); canonSet.add(canonW(n));
+    if (trap) flagTrap.add(n);
+    if (trap || trapSylSet.has(lastSyl(n))) trapSet.add(n);
+    if (!byFirst.has(p[0])) byFirst.set(p[0], []);
+    byFirst.get(p[0]).push(n);
+  }
+  allSet.add(n); allCanon.add(canonW(n)); allSorted = null; totalWords = allSet.size; showTotal(); setStatus();
   unknown = unknown.filter(u => u.w !== n); saveUnknown(); renderUnknown();
   if (!quiet) { toast('✓ Đã thêm vào kho: ' + n); if (curWord) render(); }
 }
@@ -867,7 +870,7 @@ function parseWords(raw) {
     const n = norm(part);
     if (!n || seen.has(n)) continue;
     seen.add(n);
-    if (!isVnWord(n)) bad.push(n);
+    if (!isVnPhrase(n)) bad.push(n);
     else if (knownWord(n)) have.push(n);
     else out.push(n);
   }
@@ -881,7 +884,7 @@ async function submitAdd() {
   if (have.length) notes.push('đã có: ' + have.join(', '));
   if (bad.length) notes.push('sai định dạng: ' + bad.join(', '));
   if (!out.length) {
-    addMsg(notes.length ? 'Không có từ mới (' + notes.join(' · ') + ')' : 'Nhập từ gồm 2 âm tiết', 'err');
+    addMsg(notes.length ? 'Không có từ mới (' + notes.join(' · ') + ')' : 'Nhập từ gồm ít nhất 2 âm tiết', 'err');
     return;
   }
   const label = out.length === 1 ? out[0] : out.length + ' từ: ' + out.slice(0, 3).join(', ') + (out.length > 3 ? '…' : '');
@@ -922,7 +925,7 @@ async function deleteWord(n) {
   const body = {}; ks.forEach(k => { body[k] = null; });
   const r = await fetch(DB + '/words.json', { method: 'PATCH', body: JSON.stringify(body) });
   if (!r.ok) throw new Error('http ' + r.status);
-  wordSet.delete(n); allSet.delete(n); allSorted = null;
+  wordSet.delete(n); allSet.delete(n); allCanon.delete(canonW(n)); allSorted = null;
   if (n.split(' ').length === 2) {
     const f0 = n.split(' ')[0], l = byFirst.get(f0), cn = canonW(n);
     if (l) { const rest = l.filter(x => x !== n); byFirst.set(f0, rest); if (!rest.some(x => canonW(x) === cn)) canonSet.delete(cn); }
