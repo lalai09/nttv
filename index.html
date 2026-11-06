@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<title>Nối Từ</title>
+<title> Từ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap" rel="stylesheet">
@@ -612,8 +612,8 @@ function renderQ(s) {
     const t = items[0];
     let cls = 'tile k-' + t.kind, hint = 'Chạm để chép';
     if (t.dim) cls += ' guess';
-    if (isGl) hint = 'Chạm các ô trên game theo thứ tự chữ này · chạm đây để chép';
-    if (isWs) hint = 'Bấm các ô âm tiết trên game theo thứ tự từ trái sang phải của cụm này';
+    if (isGl) hint = t.dim ? 'Đoán ngoài kho · gõ từ này vào ô · chạm đây để chép' : 'Gõ từ này vào ô · chạm đây để chép';
+    if (isWs) hint = t.dim ? 'Đoán ngoài kho · gõ cụm này vào ô · chạm đây để chép' : 'Gõ cụm này vào ô · chạm đây để chép';
     if (t.dim && !isGl) hint = 'Đoán ngoài kho · chạm để chép';
     h += `<button type="button" class="${cls}" data-act="copy" data-w="${esc(t.w)}">
       <span class="lbl">${s.kind === 'sp' ? 'Đáp án đúng' : (isWs ? 'Thứ tự đúng' : 'Gợi ý số 1')}</span>
