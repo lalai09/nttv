@@ -212,7 +212,7 @@ h2.sec::before{content:'';width:4px;height:13px;border-radius:2px;background:var
 #cf-no{border:1px solid var(--line);color:var(--muted);background:var(--surface2)}
 #cf-yes{background:var(--rainbow);background-size:200% 100%;animation:flow 6s linear infinite;color:#1a1530}
 
-/* Chọn từ đúng chính tả: ô bo tròn hai đầu, mỗi hàng tối đa 3, hàng lẻ căn giữa (4 = 3+1, 5 = 3+2) */
+/* Chọn từ đúng chính tả */
 .sp-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;padding:4px 0}
 .sp-opt{flex:0 0 calc((100% - 20px) / 3);min-height:54px;border-radius:999px;
   display:flex;align-items:center;justify-content:center;padding:8px 12px;text-align:center;overflow-wrap:anywhere;color:var(--text);
@@ -237,46 +237,42 @@ h2.sec{margin:0 0 9px;font-size:13px}
 .hint{margin:8px 2px 0}
 #toggles{gap:8px}
 
-/* Ô nhập từ mới */
-#add-row{display:flex;gap:8px}
-#add-in{flex:1;min-width:0;min-height:42px;padding:0 14px;border-radius:12px;border:1px solid var(--line);
+/* Ô nhập */
+#add-row,#trap-row,#srch-row{display:flex;gap:8px}
+#add-in,#trap-in,#srch-in{flex:1;min-width:0;min-height:42px;padding:0 14px;border-radius:12px;border:1px solid var(--line);
   background:var(--surface);color:var(--text);font:inherit;font-size:15px;font-weight:600}
-#add-in::placeholder{color:var(--muted);opacity:.7;font-weight:500}
-#add-in:focus{border-color:var(--warn)}
-#add-btn{flex:none;min-height:42px;padding:0 16px;border-radius:12px;font-weight:800;font-size:14px;
-  background:var(--rainbow);background-size:200% 100%;animation:flow 6s linear infinite;color:#1a1530}
-#add-btn:active{transform:scale(.97)}
-#add-btn:disabled{opacity:.5}
-#add-msg{margin:6px 2px 0;font-size:12px;font-weight:600;color:var(--muted);min-height:1em}
-#add-msg.err{color:var(--bad)}
-#add-msg.ok{color:var(--good)}
-#trap-row{display:flex;gap:8px}
-#trap-in{flex:1;min-width:0;min-height:42px;padding:0 14px;border-radius:12px;border:1px solid var(--line);
-  background:var(--surface);color:var(--text);font:inherit;font-size:15px;font-weight:600}
-#trap-in::placeholder{color:var(--muted);opacity:.7;font-weight:500}
+#add-in::placeholder,#trap-in::placeholder,#srch-in::placeholder{color:var(--muted);opacity:.7;font-weight:500}
+#add-in:focus,#srch-in:focus{border-color:var(--warn)}
 #trap-in:focus{border-color:var(--trap)}
-#trap-btn{flex:none;min-height:42px;padding:0 16px;border-radius:12px;font-weight:800;font-size:14px;
-  background:linear-gradient(135deg,#ffa94d,#ff6b86);color:#1a1530}
-#trap-btn:active{transform:scale(.97)}
-#trap-btn:disabled{opacity:.5}
-#trap-msg{margin:6px 2px 0;font-size:12px;font-weight:600;color:var(--muted);min-height:1em}
-#trap-msg.err{color:var(--bad)}
-#trap-msg.ok{color:var(--good)}
+#add-msg,#trap-msg{margin:6px 2px 0;font-size:12px;font-weight:600;color:var(--muted);min-height:1em}
+#add-msg.err,#trap-msg.err{color:var(--bad)}
+#add-msg.ok,#trap-msg.ok{color:var(--good)}
 #wd-mgr-btn{background:linear-gradient(135deg,rgba(110,231,160,.24),rgba(79,209,255,.14));border-color:rgba(110,231,160,.5)}
-.mgr-box{border:1px solid var(--line);border-radius:16px;padding:11px 12px;background:rgba(21,18,42,.65)}
-#srch-row{display:flex;gap:8px}
-#srch-in{flex:1;min-width:0;min-height:42px;padding:0 14px;border-radius:12px;border:1px solid var(--line);
-  background:var(--surface);color:var(--text);font:inherit;font-size:15px;font-weight:600}
-#srch-in::placeholder{color:var(--muted);opacity:.7;font-weight:500}
-#srch-in:focus{border-color:var(--warn)}
-#srch-trap{flex:none;min-height:42px;padding:0 12px}
+
+/* ===== Quản lý kho kiểu mới ===== */
+.mgr-sub{margin:0;text-align:center;color:var(--muted);font-size:14px}
+.mgr-total{margin:0;text-align:center;font-weight:800;color:var(--ok);font-size:15px}
+.mgr-box{border:1px solid var(--line);border-radius:22px;padding:16px;background:rgba(21,18,42,.65)}
+.mgr-note{margin:0 0 10px;font-size:13px;line-height:1.5;color:var(--muted)}
+.mgr-note b{color:var(--text)} .star{color:var(--warn)}
+.inwrap{flex:1;min-width:0;position:relative;display:flex}
+.inwrap input{width:100%;padding-right:42px}
+.inwrap span{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 14px}
+.mode{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 6px;border-radius:14px;border:1px solid var(--line);background:var(--surface);font-size:13px;font-weight:700}
+.mode small{font-weight:500;font-size:12px;color:var(--muted)}
+.mode.on{border-color:var(--ok);background:linear-gradient(135deg,rgba(143,123,255,.35),rgba(79,224,192,.12))}
+#add-btn,#trap-btn,#srch-btn{flex:none;min-height:42px;padding:0 18px;border-radius:12px;font-weight:800;font-size:14px;color:#fff;
+  background:linear-gradient(135deg,#1fd1c0,#7b6cff)}
+#add-btn:active,#trap-btn:active,#srch-btn:active{transform:scale(.97)}
+#add-btn:disabled,#trap-btn:disabled{opacity:.5}
+.ghost{flex:none;min-height:42px;padding:0 14px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-weight:700;font-size:13px}
+.ghost:active{background:var(--surface2)}
+.row2{display:flex;gap:8px;flex-wrap:wrap}
+.trap-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:13px}
+.trap-foot .ghost{min-height:34px;padding:0 12px;font-size:12px;border-radius:999px}
+#trap-list{margin-top:10px}
 #srch-res{margin-top:4px;max-height:52vh;overflow-y:auto;scrollbar-width:thin}
-.res{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:12px;background:var(--surface);border:1px solid var(--line);margin-top:6px}
-.res-w{flex:1;min-width:0;font-weight:700;font-size:15px;word-break:break-word}
-.res-b{flex:none;font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(255,169,77,.22);color:var(--trap)}
-.res button{flex:none;min-height:32px;padding:0 10px;border-radius:10px;font-size:12px;font-weight:800;border:1px solid var(--line);background:var(--surface2)}
-.res button:disabled{opacity:.5}
-.res .del{color:var(--dead)}
 </style>
 </head>
 <body>
@@ -352,34 +348,49 @@ h2.sec{margin:0 0 9px;font-size:13px}
   <!-- Quản lý kho -->
   <section id="wd-mgr" class="view" hidden>
     <div class="mgr-box">
-      <h2 class="sec">Tìm / xóa / bẫy từ <span id="srch-n"></span></h2>
       <div id="srch-row">
-        <input id="srch-in" type="text" placeholder="Tìm từ (gõ có dấu hoặc không dấu)" aria-label="Tìm từ trong kho"
-          autocomplete="off" autocapitalize="off" spellcheck="false">
-        <button id="srch-trap" class="tg" type="button" aria-pressed="false">Chỉ bẫy</button>
+        <div class="inwrap"><input id="srch-in" type="text" enterkeyhint="search" placeholder="Ví dụ: hành, sinh, thương..." aria-label="Tìm từ"
+          autocomplete="off" autocapitalize="off" spellcheck="false"><span>🔍</span></div>
+        <button id="srch-btn" type="button">Tìm</button>
       </div>
+      <div class="modes">
+        <button id="m-after" class="mode on" type="button" aria-pressed="true">Từ nối phía sau<small>(hành → hành động)</small></button>
+        <button id="m-before" class="mode" type="button" aria-pressed="false">Từ nối phía trước<small>(cây → cỏ cây)</small></button>
+      </div>
+      <h2 class="sec">💡 TỪ CÓ THỂ NỐI TIẾP</h2>
       <div id="srch-res"></div>
     </div>
 
     <div class="mgr-box">
-      <h2 class="sec">Thêm từ vào kho</h2>
+      <h2 class="sec">➕ THÊM / XÓA TỪ (ĐỒNG BỘ FIREBASE)</h2>
       <div id="add-row">
-        <input id="add-in" type="text" placeholder="vd: hòa bình, nối từ" aria-label="Nhập từ để thêm vào kho"
+        <input id="add-in" type="text" enterkeyhint="done" placeholder="Nhập từ ghép 2 âm tiết, vd: an tâm" aria-label="Nhập từ để thêm hoặc xóa"
           autocomplete="off" autocapitalize="off" spellcheck="false">
         <button id="add-btn" type="button">Thêm</button>
+        <button id="del-btn" class="ghost" type="button">Xóa</button>
       </div>
       <p id="add-msg"></p>
     </div>
 
     <div class="mgr-box">
-      <h2 class="sec">Thêm từ bẫy <span id="trap-n"></span></h2>
+      <h2 class="sec">⭐ ĐÁNH DẤU TỪ BẪY THEO ÂM CUỐI</h2>
       <div id="trap-row">
-        <input id="trap-in" type="text" placeholder="vd: ngạch (âm tiết) hoặc hòa bình (từ)" aria-label="Nhập âm tiết hoặc từ bẫy"
+        <input id="trap-in" type="text" enterkeyhint="done" placeholder="Ví dụ: phiệt" aria-label="Nhập âm tiết bẫy"
           autocomplete="off" autocapitalize="off" spellcheck="false">
-        <button id="trap-btn" type="button">Thêm</button>
+        <button id="trap-btn" type="button">Tìm</button>
+        <button id="untrap-btn" class="ghost" type="button">Bỏ đánh dấu</button>
       </div>
       <p id="trap-msg"></p>
-      <p class="hint">Nhập 1 âm tiết: mọi từ kết thúc bằng âm tiết đó đều là bẫy. Nhập từ 2 âm tiết: chỉ đánh dấu riêng từ đó (chưa có trong kho thì thêm luôn).</p>
+      <div class="trap-foot">
+        <b>Âm cuối đã đặt bẫy (<span id="trap-n">0</span>)</b>
+        <span class="row2">
+          <button id="trap-copy" class="ghost" type="button">📋 Sao chép âm cuối</button>
+        </span>
+      </div>
+    </div>
+
+    <div class="mgr-box">
+      <button id="dl-btn" class="ghost" type="button" style="width:100%">📥 TẢI CÁC TỪ HIỆN CÓ (<span id="all-n">0</span> TỪ)</button>
     </div>
   </section>
 
@@ -433,16 +444,20 @@ $('code-in').onchange = () => {
 // ===== Kho từ =====
 const TRAP_SYL_DEFAULT = `ách ải án ất ấy báu bấc bần bâu bậu bệch bên bền bếp bích biền bọc bối bôn bu bướm cạ cáng cảu cặn cậu chạc chài chát chét chiêng choàng chông chốt chờ chù chùa chùm chuyền chước chướng cóp cối cốm cỡ cơn cuội cút cứ cước cược cữu dán dạn dạng dạt dăm dậy diệp díp dịp dìu dò dọc dõi dốt dột dừng đác đai đam đạm đao đảo đạp đạt đáy đắp đậm đẩy đẽo đỉa địch điểu điệu đó đoàn đoảng đoi đốm đốn độn đống đới đù đực gạc gãy găm gắn gấm giành giậu giẻ giời gòn gội hạc hái hạm han hãn hanh hão hẩm he hẹ hèm hẹn hiên hò hoạn hoắc hoặc họp hởi huống hụt huy hửng hứng ỉ kẽm kép kẹp kha khan khanh khẩu kheo khế khỉ khoác khỏi khói khốc khớp khuẩn kị kiệm kiếp kiệu kỵ lãn lảy lạy lặt lé lệch liễm liễu loá loài lóc loét lọi lọng lốt lơi lui lụt lụy lữ lứa lừng lượn lựu lỵ mại mảng mào mảy mắn mẩn mè mẻ mẽ mé mẹt mề miệng miêu mó mõm mòn mọng mộ mối mồm mống mơ mủi muỗi muộn mút mửa mức mươi mướp mượt nạ nách nái nại nào nạp náu nay nãy nén nẻo nể nệ nến ngạch ngài ngàn ngạn ngào ngát ngấu nghẽn nghê nghệch nghiệm ngoằng ngoẹo ngòng ngổn nguội ngừa nhạn nhánh nhẩn nhẽ nhện nhi nhì nhiêu nhịn nho nhọ nhon nhóp nhợt nhủ nhuệ nhúm nhún nhùng nhụng nhuộm nhừ nhược nịch ninh nọ nóc nọc nòi nôi nôm nồm núi nung núp nữa nực nướng ổn ớ phả phai phào phất phật phiệt phiếu phổi phông phớt phút phức quãng quáng quắp quẩn quẫn què quế quyên rạ rái ráy rắm rầy rẫy rê rể rết ri riêng rọi rộ rốt rúng rứt sả sạc sách sải sáp sắt sẻ sen sét siết sọ soái sợi sụ sủa suất suối suốt súy sữa sương tạc tải tan tạng tặc tằm tấm tấn tầng tẻ tể tệ tết thán thẳm thặng thận thệ thềm thiếp thiều thoa thoại thoảng thòi thọt thố thùa thuận thuật thủng thuyên tía tiệc tiệp tim toả toát toi tót tội trạch trai trảm trầu trẹo trề trệ trịch triện trỏ trụ truỵ trụy truyện trừ trượt tú tụng tuỷ tủy uế ủi uống út vã vạ vạc vách vãi vãn vạt váy vẫn vẩy vẽ vế vía viết vó voi vọng vùi vút vữa vựa vựng xạ xát xắn xén xế xị xiêm xiết xo xót xới xù xuyến xưởng`.split(/\s+/).filter(Boolean);
 let trapSylSet = new Set(TRAP_SYL_DEFAULT.map(canonSyl));
-const remoteSyl = new Set(), keyOf = new Map(), allKeys = new Map(), flagTrap = new Set();
-let searchIdx = null;
+const remoteSyl = new Set(), keyOf = new Map(), allKeys = new Map(), flagTrap = new Set(), sylKeys = new Map();
 const lastSyl = n => canonSyl(n.slice(n.lastIndexOf(' ') + 1));
 const byFirst = new Map(), trapSet = new Set();
-let wordSet = new Set(), canonSet = new Set();
+let wordSet = new Set(), canonSet = new Set(), allSet = new Set(), allSorted = null;
+const defSyl = new Set(TRAP_SYL_DEFAULT.map(canonSyl)), offSyl = new Set();   // offSyl: âm bẫy có sẵn đã bị xóa
+const calcTrapSyl = () => new Set([...Array.from(defSyl).filter(x => !offSyl.has(x)), ...remoteSyl]);
 let dictReady = false, totalWords = 0;
+function showTotal() {
+  $('all-n').textContent = totalWords.toLocaleString('vi-VN');
+}
 function setStatus() {
   const el = $('wd-status');
   el.style.color = '';
-  if (dictReady) { el.className = 'ok'; el.textContent = 'Kho ' + totalWords.toLocaleString('vi-VN') + ' từ'; }
+  if (dictReady) { el.className = 'ok'; el.textContent = 'Kho ' + totalWords.toLocaleString('vi-VN') + ' từ'; showTotal(); }
   else { el.className = 'err'; el.textContent = 'Lỗi tải kho từ'; }
 }
 let wdLastKey = '';
@@ -452,35 +467,42 @@ function loadWords() {
     fetch(DB + '/trapsyl.json', { cache: 'no-store' }).then(r => r.text()).catch(() => 'null')
   ]).then(([wt, tt]) => {
     const key = wt.length + '|' + tt.length;
-    if (dictReady && key === wdLastKey) return;   // kho không đổi: khỏi dựng lại 55k từ
+    if (dictReady && key === wdLastKey) return;   // kho không đổi: khỏi dựng lại
     wdLastKey = key;
     const data = JSON.parse(wt); let ts = null; try { ts = JSON.parse(tt); } catch (e) {}
-    byFirst.clear(); trapSet.clear(); keyOf.clear(); allKeys.clear(); flagTrap.clear(); remoteSyl.clear(); searchIdx = null;
-    for (const v of Object.values(ts && !ts.error ? ts : {})) { const sy = typeof v === 'string' ? v : v && v.s; if (sy) remoteSyl.add(canonSyl(norm(sy))); }
-    trapSylSet = new Set([...TRAP_SYL_DEFAULT.map(canonSyl), ...remoteSyl]);
-    const seen = new Set();
+    byFirst.clear(); trapSet.clear(); keyOf.clear(); allKeys.clear(); flagTrap.clear(); remoteSyl.clear(); offSyl.clear(); sylKeys.clear();
+    for (const [k, v] of Object.entries(ts && !ts.error ? ts : {})) {
+      const sy = typeof v === 'string' ? v : v && v.s;
+      if (!sy) continue;
+      const c = canonSyl(norm(sy));
+      if (v && typeof v === 'object' && v.off) { offSyl.add(c); continue; }   // bản ghi 'đã xóa âm bẫy có sẵn'
+      remoteSyl.add(c); if (!sylKeys.has(c)) sylKeys.set(c, []); sylKeys.get(c).push(k);
+    }
+    trapSylSet = calcTrapSyl();
+    const seen = new Set(), all = new Set();
     for (const [k, e] of (data ? Object.entries(data) : [])) {
       const w = typeof e === 'string' ? e : e && e.w;
       if (!w) continue;
       const n = norm(w), p = n.split(' ');
-      if (p.length === 2) {
-        if (!allKeys.has(n)) allKeys.set(n, []);
-        allKeys.get(n).push(k);
-        if (e && e.trap) { trapSet.add(n); flagTrap.add(n); }
-      }
-      if (p.length !== 2 || seen.has(n)) continue;
+      all.add(n);                                   // đếm mọi từ, kể cả > 2 âm tiết
+      if (!allKeys.has(n)) allKeys.set(n, []);
+      allKeys.get(n).push(k);
+      if (p.length !== 2) continue;
+      if (e && e.trap) { trapSet.add(n); flagTrap.add(n); }
+      if (seen.has(n)) continue;
       seen.add(n);
       keyOf.set(n, k);
-      if (e && e.trap) { trapSet.add(n); flagTrap.add(n); }
       if (!byFirst.has(p[0])) byFirst.set(p[0], []);
       byFirst.get(p[0]).push(n);
     }
     for (const n of seen) if (trapSylSet.has(lastSyl(n))) trapSet.add(n);   // từ kết thúc bằng âm tiết bẫy
-    totalWords = seen.size; dictReady = true; setStatus(); showTrapN();
+    allSet = all; allSorted = null;
+    totalWords = all.size; dictReady = true; setStatus(); showTrapN();
     wordSet = seen; canonSet = new Set(Array.from(seen, canonW));
     pendingUnk.splice(0).forEach(noteUnknown);
     pruneUnknown();
     if (curWord) render();
+    if (mgrOpen) doSearch();
   }).catch(() => { if (!dictReady) setStatus(); });
 }
 loadWords(); setInterval(loadWords, 30000);
@@ -509,7 +531,6 @@ function speak(text) {
     speechSynthesis.speak(u);
   } catch (e) {}
 }
-// đọc khi gợi ý đổi (key giống lần trước thì không đọc lại)
 function say(text, key) {
   lastSayText = text;
   if (!speakOn || key === lastSayKey) { if (key !== lastSayKey) lastSayKey = key; return; }
@@ -526,7 +547,7 @@ $('wd-speak').onclick = () => {
   if (speakOn) {
     pickVoice();
     if (!viVoice) toast('Máy chưa có giọng tiếng Việt', 'var(--warn)');
-    speak(lastSayText || 'Đã bật đọc to');   // chạm của người dùng giúp trình duyệt cho phép phát tiếng
+    speak(lastSayText || 'Đã bật đọc to');
   } else if (canSpeak) speechSynthesis.cancel();
 };
 $('wd-say').onclick = () => { pickVoice(); speak(lastSayText || 'Chưa có gợi ý'); };
@@ -535,8 +556,8 @@ showSpeak();
 // ===== Trạng thái Nối Từ =====
 const used = new Set(), mine = new Set(), opp = new Set();
 let curWord = '', lastT = 0, hist = [];
-let prevHist = [];   // chuỗi liền trước (lưu lại khi sang chuỗi mới)
-let pending = null;   // từ hợp lệ chưa nối được, chờ từ kế tiếp để thành chuỗi mới
+let prevHist = [];
+let pending = null;
 const updCnt = () => { $('wd-my-n').textContent = mine.size; $('wd-opp-n').textContent = opp.size; };
 
 function doClear() {
@@ -650,7 +671,7 @@ function handleQ(obj) {
   if (qState && qState.warn && qState.type === 'idle') toast(qState.warn, 'var(--warn)');
   applyView();
 }
-async function pollQ() {   // dự phòng khi luồng bị đứt
+async function pollQ() {
   try { handleQ(await (await fetch(`${DB}/liveq/${encodeURIComponent(code)}.json`, { cache: 'no-store' })).json()); } catch (e) {}
 }
 setInterval(pollQ, 1500); pollQ();
@@ -660,13 +681,13 @@ function handleLive(d) {
   $('wd-dot').classList.remove('off');
   if (d && d.word && d.t !== lastT) { lastT = d.t; onWord(d.word); }
 }
-async function poll() {   // dự phòng khi luồng bị đứt
+async function poll() {
   try { handleLive(await (await fetch(`${DB}/live/${encodeURIComponent(code)}.json`, { cache: 'no-store' })).json()); }
   catch (e) { $('wd-dot').classList.add('off'); }
 }
 setInterval(poll, 1500); poll();
 
-// ===== Luồng Firebase (Server-Sent Events): script vừa ghi là HTML nhận ngay, không chờ nhịp hỏi =====
+// ===== Luồng Firebase (Server-Sent Events) =====
 let esQ = null, esL = null;
 function sseOpen(path, onObj) {
   const url = `${DB}/${path}/${encodeURIComponent(code)}.json`;
@@ -676,8 +697,8 @@ function sseOpen(path, onObj) {
   const on = ev => {
     try {
       const m = JSON.parse(ev.data);
-      if (ev.type === 'put' && m && m.path === '/') onObj(m.data);   // thay cả nút: dùng luôn dữ liệu nhận được
-      else refetch();                                                 // thay một phần: lấy lại cả nút cho chắc
+      if (ev.type === 'put' && m && m.path === '/') onObj(m.data);
+      else refetch();
     } catch (e) {}
   };
   es.addEventListener('put', on); es.addEventListener('patch', on);
@@ -691,7 +712,7 @@ function openStreams() {
 }
 openStreams();
 
-// ===== Kiểm tra định dạng tiếng Việt: âm tiết = [phụ âm đầu] + nguyên âm + [phụ âm cuối] + tối đa 1 dấu thanh =====
+// ===== Kiểm tra định dạng tiếng Việt =====
 const VN_INIT = ['ngh','ng','nh','ch','gh','gi','kh','ph','th','tr','qu','b','c','d','đ','g','h','k','l','m','n','p','r','s','t','v','x',''];
 const VN_FIN = ['ng','nh','ch','c','m','n','p','t',''];
 const VN_NUC = new Set(('a ă â e ê i o ô ơ u ư y ai ao au ay âu ây eo êu ia iê iu oa oă oe oi ôi ơi ua uâ uê ui uô uơ uy ưa ưi ươ ưu yê oo ' +
@@ -709,9 +730,9 @@ function isVnSyl(syl) {
       const nuc = fin ? rest.slice(0, -fin.length) : rest;
       if (!VN_NUC.has(nuc)) continue;
       const f = nuc[0];
-      if ((ini === 'k' || ini === 'gh' || ini === 'ngh') && !/[ieêy]/.test(f)) continue;          // k/gh/ngh chỉ đứng trước i, e, ê, y
-      if ((ini === 'c' || ini === 'g' || ini === 'ng') && /[ieêy]/.test(f) && !(ini === 'g' && nuc === 'i')) continue;  // c/g/ng không đứng trước i, e, ê, y
-      if ((fin === 'c' || fin === 'ch' || fin === 'p' || fin === 't') && tone !== '\u0301' && tone !== '\u0323') continue;  // đuôi c/ch/p/t chỉ có dấu sắc hoặc nặng
+      if ((ini === 'k' || ini === 'gh' || ini === 'ngh') && !/[ieêy]/.test(f)) continue;
+      if ((ini === 'c' || ini === 'g' || ini === 'ng') && /[ieêy]/.test(f) && !(ini === 'g' && nuc === 'i')) continue;
+      if ((fin === 'c' || fin === 'ch' || fin === 'p' || fin === 't') && tone !== '\u0301' && tone !== '\u0323') continue;
       return true;
     }
   }
@@ -719,43 +740,39 @@ function isVnSyl(syl) {
 }
 const isVnWord = n => { const p = (n || '').split(' '); return p.length === 2 && p.every(isVnSyl); };
 
-// Từ nối tiếp = âm tiết đầu của từ mới trùng âm tiết cuối của từ trước đó
 const isChain = (prev, n) => {
   const a = norm(prev).split(' '), b = n.split(' ');
   return a.length === 2 && b.length === 2 && canonSyl(a[1]) === canonSyl(b[0]);
 };
-let anchor = '';   // từ nối tiếp gần nhất đã được chấp nhận
+let anchor = '';
 function onWord(w) {
-  const n = norm(w), valid = isVnWord(n);   // đúng 2 âm tiết và đúng định dạng tiếng Việt
-  // đối chiếu với từ gần nhất đã nhận VÀ từ đang hiện, để một lần đọc nhầm không làm hỏng chuỗi
+  const n = norm(w), valid = isVnWord(n);
   let chain = valid && !!anchor && isChain(anchor, n);
   if (chain) {
     pending = null;
   } else if (valid && anchor && pending && n !== pending.n && isChain(pending.n, n) && (knownWord(pending.n) || knownWord(n))) {
-    // đủ 2 từ nối nhau nhưng không nối với chuỗi cũ => chuỗi mới: đẩy chuỗi cũ xuống, xóa phiên
     if (hist.length) prevHist = hist;
     used.clear(); mine.clear(); opp.clear();
-    used.add(pending.n);                       // từ đầu của chuỗi mới cũng đã được dùng
+    used.add(pending.n);
     hist = [{ w: pending.w, n: pending.n, me: false }];
     anchor = pending.n; pending = null; chain = true;
     toast('Chuỗi mới · đã lưu chuỗi trước', 'var(--warn)');
   } else if (valid && anchor && curWord && isChain(curWord, n) && !(pending && norm(curWord) === pending.n)) {
-    chain = true;   // đối chiếu thêm với từ đang hiện, để một lần đọc nhầm không làm hỏng chuỗi
+    chain = true;
   } else if (valid && anchor && n !== anchor && n !== norm(curWord)) {
-    pending = { w, n };   // từ hợp lệ nhưng chưa nối được: chờ từ kế tiếp nối vào mới tính là chuỗi mới
+    pending = { w, n };
   }
-  const start = valid && !anchor;   // chưa có mốc (đầu ván / sau khi xóa) thì từ hợp lệ đầu tiên làm mốc
+  const start = valid && !anchor;
   curWord = w;
   if (chain || start) anchor = n;
-  if (chain) {                      // chỉ từ nối tiếp mới tính là đã dùng
+  if (chain) {
     used.add(n);
     if (!mine.has(n)) opp.add(n);
   }
-  if (start) used.add(n);           // từ mở đầu phiên đã được dùng, không gợi ý lại
+  if (start) used.add(n);
   if (chain || start) noteUnknown(n);
-  if (chain || start) {              // từ không nối tiếp thì không vào lịch sử
+  if (chain || start) {
     hist.push({ w, n, me: mine.has(n) });
-    // chỉ giữ đoạn chuỗi liền mạch ở cuối: từ phía trước mà không nối với từ sau thì bỏ
     let k = hist.length - 1;
     while (k > 0 && isChain(hist[k - 1].n, hist[k].n)) k--;
     hist = hist.slice(Math.max(k, hist.length - 30));
@@ -767,11 +784,11 @@ function onWord(w) {
   if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) {}
 }
 
-// ===== Từ phát hiện được mà chưa có trong kho (lưu trong trình duyệt, không tự đẩy lên kho) =====
+// ===== Từ phát hiện được mà chưa có trong kho =====
 const UNK_KEY = 'wd_unknown';
 let unknown = [];
 try { unknown = JSON.parse(lsGet(UNK_KEY, '[]')) || []; } catch (e) { unknown = []; }
-unknown = unknown.filter(u => u && isVnWord(u.w));   // bỏ các từ sai định dạng đã lưu từ trước
+unknown = unknown.filter(u => u && isVnWord(u.w));
 const pendingUnk = [];
 const knownWord = n => wordSet.has(n) || canonSet.has(canonW(n));
 function saveUnknown() { lsSet(UNK_KEY, JSON.stringify(unknown.slice(0, 500))); }
@@ -781,7 +798,7 @@ function noteUnknown(n) {
   unknown.unshift({ w: n, t: Date.now() });
   saveUnknown(); renderUnknown();
 }
-function pruneUnknown() {          // kho vừa cập nhật có từ đó rồi thì bỏ khỏi danh sách
+function pruneUnknown() {
   const before = unknown.length;
   unknown = unknown.filter(u => !knownWord(u.w));
   if (unknown.length !== before) saveUnknown();
@@ -809,11 +826,10 @@ async function addToKho(n, trap, quiet) {
   const p = n.split(' ');
   wordSet.add(n); canonSet.add(canonW(n));
   if (trap) flagTrap.add(n);
-  if (searchIdx) searchIdx.push({ w: n, f: fold(n) });
   if (trap || trapSylSet.has(lastSyl(n))) trapSet.add(n);
   if (!byFirst.has(p[0])) byFirst.set(p[0], []);
   byFirst.get(p[0]).push(n);
-  totalWords++;
+  allSet.add(n); allSorted = null; totalWords = allSet.size; showTotal(); setStatus();
   unknown = unknown.filter(u => u.w !== n); saveUnknown(); renderUnknown();
   if (!quiet) { toast('✓ Đã thêm vào kho: ' + n); if (curWord) render(); }
 }
@@ -882,7 +898,7 @@ async function submitAdd() {
 $('add-btn').onclick = submitAdd;
 $('add-in').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); submitAdd(); } };
 $('add-in').oninput = () => addMsg('');
-$('add-in').onpaste = e => {   // dán nhiều dòng thì đổi xuống dòng thành dấu phẩy
+$('add-in').onpaste = e => {
   const t = (e.clipboardData || window.clipboardData).getData('text');
   if (!/[\r\n]/.test(t)) return;
   e.preventDefault();
@@ -890,9 +906,9 @@ $('add-in').onpaste = e => {   // dán nhiều dòng thì đổi xuống dòng t
   el.value = el.value.slice(0, s) + t.trim().replace(/\s*[\r\n]+\s*/g, ', ') + el.value.slice(en);
 };
 
-// ===== Quản lý kho: tìm / xóa / bẫy từ =====
-const fold = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
-let onlyTrap = false;
+// ===== Quản lý kho =====
+const E = new Set(), MK2 = { dead: '✓', trap: '★', 'risk-trap': '⚡', 'risk-dead': '✗', ok: '' };
+let sMode = 'after', lastQ = '';   // lastQ: từ khóa đang tìm (ô nhập được xóa sau khi bấm Tìm)
 async function setTrapFlag(n, val) {
   const ks = allKeys.get(n); if (!ks || !ks.length) throw new Error('no key');
   const body = {}; ks.forEach(k => { body[k + '/trap'] = val ? true : null; });
@@ -906,60 +922,119 @@ async function deleteWord(n) {
   const body = {}; ks.forEach(k => { body[k] = null; });
   const r = await fetch(DB + '/words.json', { method: 'PATCH', body: JSON.stringify(body) });
   if (!r.ok) throw new Error('http ' + r.status);
-  wordSet.delete(n);
-  const f0 = n.split(' ')[0], l = byFirst.get(f0), cn = canonW(n);
-  if (l) { const rest = l.filter(x => x !== n); byFirst.set(f0, rest); if (!rest.some(x => canonW(x) === cn)) canonSet.delete(cn); }
-  else canonSet.delete(cn);
+  wordSet.delete(n); allSet.delete(n); allSorted = null;
+  if (n.split(' ').length === 2) {
+    const f0 = n.split(' ')[0], l = byFirst.get(f0), cn = canonW(n);
+    if (l) { const rest = l.filter(x => x !== n); byFirst.set(f0, rest); if (!rest.some(x => canonW(x) === cn)) canonSet.delete(cn); }
+    else canonSet.delete(cn);
+  }
   trapSet.delete(n); flagTrap.delete(n); keyOf.delete(n); allKeys.delete(n);
-  totalWords = wordSet.size; if (searchIdx) searchIdx = searchIdx.filter(it => it.w !== n); setStatus();
+  totalWords = allSet.size; setStatus();
+}
+
+function setMode(m) {
+  sMode = m;
+  $('m-after').classList.toggle('on', m === 'after'); $('m-before').classList.toggle('on', m === 'before');
+  $('m-after').setAttribute('aria-pressed', m === 'after'); $('m-before').setAttribute('aria-pressed', m === 'before');
+  doSearch();
 }
 function doSearch() {
-  const box = $('srch-res'), q = norm($('srch-in').value);
+  const box = $('srch-res'), q = lastQ;
   if (!dictReady) { box.innerHTML = '<div class="empty">Kho từ chưa tải xong</div>'; return; }
-  if (!q && !onlyTrap) { box.innerHTML = '<div class="empty">Gõ để tìm từ trong kho</div>'; $('srch-n').textContent = ''; return; }
-  if (!searchIdx) searchIdx = Array.from(wordSet, w => ({ w, f: fold(w) }));
-  const fq = fold(q), a = [], b = [];
-  for (const it of searchIdx) {
-    if (onlyTrap && !trapSet.has(it.w)) continue;
-    if (!q || it.w.includes(q)) a.push(it.w);
-    else if (it.f.includes(fq)) b.push(it.w);
+  if (!q) { box.innerHTML = ''; return; }
+  const parts = q.split(' '), sy = canonSyl(sMode === 'after' ? parts[parts.length - 1] : parts[0]);
+  const list = [];
+  if (sMode === 'after') { for (const [k, l] of byFirst) if (canonSyl(k) === sy) list.push(...l); }
+  else { for (const n of wordSet) if (lastSyl(n) === sy) list.push(n); }
+  const g = { dead: [], trap: [], ok: [], 'risk-trap': [], 'risk-dead': [] };
+  for (const w of list) {
+    if (w === q) continue;
+    g[trapSet.has(w) ? 'trap' : deadEnd(w, E) ? 'dead' : (risky(w, E) || 'ok')].push(w);
   }
-  const list = a.concat(b), LIM = 60;
-  $('srch-n').textContent = '(' + list.length.toLocaleString('vi-VN') + ' từ)';
-  if (!list.length) { box.innerHTML = '<div class="empty">Không tìm thấy từ nào</div>'; return; }
-  box.innerHTML = list.slice(0, LIM).map(w => {
-    const fl = flagTrap.has(w), tr = trapSet.has(w), ew = esc(w);
-    return `<div class="res"><span class="res-w">${ew}</span>` +
-      (tr ? `<span class="res-b">${fl ? 'bẫy' : 'bẫy (âm tiết)'}</span>` : '') +
-      (fl ? `<button type="button" data-act="untrap" data-w="${ew}">Bỏ bẫy</button>` : (tr ? '' : `<button type="button" data-act="trap" data-w="${ew}">Bẫy</button>`)) +
-      `<button type="button" class="del" data-act="del" data-w="${ew}">Xóa</button></div>`;
-  }).join('') + (list.length > LIM ? `<div class="empty">Còn ${list.length - LIM} từ nữa, gõ thêm để thu hẹp</div>` : '');
+  const flat = ['dead', 'trap', 'ok', 'risk-trap', 'risk-dead'].flatMap(k => g[k].map(w => [w, k]));
+  if (!flat.length) { box.innerHTML = '<div class="empty">Không tìm thấy từ nào</div>'; return; }
+  const LIM = 300;
+  box.innerHTML = `<div class="hint">${flat.length.toLocaleString('vi-VN')} từ · chạm để chép</div><div class="chips" style="margin-top:8px">` +
+    flat.slice(0, LIM).map(([w, k]) => `<button type="button" class="chip k-${k}" data-w="${esc(w)}">${MK2[k] ? `<span class="mk">${MK2[k]}</span>` : ''}${esc(w)}</button>`).join('') +
+    '</div>' + (flat.length > LIM ? `<div class="empty">Còn ${flat.length - LIM} từ nữa</div>` : '');
 }
 let srchT = 0;
-$('srch-in').oninput = () => { clearTimeout(srchT); srchT = setTimeout(doSearch, 150); };
-$('srch-trap').onclick = () => { onlyTrap = !onlyTrap; $('srch-trap').setAttribute('aria-pressed', onlyTrap); doSearch(); };
-$('srch-res').onclick = async e => {
-  const el = e.target.closest('[data-act]'); if (!el) return;
-  const w = el.dataset.w, act = el.dataset.act;
-  el.disabled = true;
-  try {
-    if (act === 'del') {
-      if (!(await askAdd(w, 'Xóa từ này khỏi kho?', 'Từ sẽ bị xóa khỏi kho chung (cả các bản trùng).', 'Xóa'))) { el.disabled = false; return; }
-      await deleteWord(w); toast('Đã xóa: ' + w, 'var(--warn)');
-    } else {
-      await setTrapFlag(w, act === 'trap');
-      toast(act === 'trap' ? '★ Đã đánh dấu bẫy: ' + w : 'Đã bỏ bẫy: ' + w, 'var(--warn)');
-    }
-  } catch (err) { toast('Không thực hiện được', 'var(--bad)'); }
-  doSearch(); if (curWord) render();
+function submitSearch() {
+  const v = norm($('srch-in').value);
+  if (!v) return;
+  clearTimeout(srchT);
+  lastQ = v; doSearch();
+  $('srch-in').value = '';   // bấm Tìm xong thì xóa ô nhập, kết quả vẫn giữ
+}
+$('srch-in').oninput = () => { clearTimeout(srchT); srchT = setTimeout(() => { lastQ = norm($('srch-in').value); doSearch(); }, 200); };
+$('srch-in').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); submitSearch(); } };
+$('srch-btn').onclick = submitSearch;
+$('m-after').onclick = () => setMode('after');
+$('m-before').onclick = () => setMode('before');
+$('srch-res').onclick = e => {
+  const el = e.target.closest('[data-w]'); if (!el) return;
+  copyText(el.dataset.w).then(ok => toast(ok ? '✓ Đã chép ' + el.dataset.w : 'Không chép được', ok ? 'var(--good)' : 'var(--bad)'));
 };
+
+// Xóa từ (nhập ở ô Thêm / Xóa)
+$('del-btn').onclick = async () => {
+  if (!dictReady) { addMsg('Kho từ chưa tải xong', 'err'); return; }
+  const n = norm($('add-in').value);
+  if (!n) { addMsg('Nhập từ cần xóa', 'err'); return; }
+  const ex = allKeys.has(n) ? n : Array.from(allSet).find(x => canonW(x) === canonW(n));
+  if (!ex) { addMsg('Không có trong kho: ' + n, 'err'); return; }
+  if (!(await askAdd(ex, 'Xóa từ này khỏi kho?', 'Từ sẽ bị xóa khỏi kho chung (cả các bản trùng).', 'Xóa'))) return;
+  try { await deleteWord(ex); $('add-in').value = ''; addMsg('✓ Đã xóa: ' + ex, 'ok'); if (curWord) render(); doSearch(); }
+  catch (e) { addMsg('Không xóa được', 'err'); }
+};
+
+// Bỏ đánh dấu bẫy theo âm cuối
+$('untrap-btn').onclick = async () => {
+  const sy = norm($('trap-in').value), c = canonSyl(sy);
+  if (!sy || sy.includes(' ')) { trapMsg('Nhập 1 âm tiết cần bỏ đánh dấu', 'err'); return; }
+  if (!trapSylSet.has(c)) { trapMsg('“' + sy + '” chưa là âm bẫy', 'err'); return; }
+  const ks = sylKeys.get(c) || [], needOff = defSyl.has(c) && !offSyl.has(c);   // âm bẫy có sẵn trong mã thì ghi thêm bản 'off'
+  if (!(await askAdd(sy, 'Bỏ đánh dấu bẫy?', 'Các từ kết thúc bằng âm này sẽ không còn là bẫy (trừ từ đã đánh dấu riêng).', 'Bỏ đánh dấu'))) return;
+  try {
+    if (ks.length) {
+      const body = {}; ks.forEach(k => { body[k] = null; });
+      const r = await fetch(DB + '/trapsyl.json', { method: 'PATCH', body: JSON.stringify(body) });
+      if (!r.ok) throw 0;
+      remoteSyl.delete(c); sylKeys.delete(c);
+    }
+    if (needOff) {
+      const r = await fetch(DB + '/trapsyl.json', { method: 'POST', body: JSON.stringify({ s: sy, off: true }) });
+      if (!r.ok) throw 0;
+      offSyl.add(c);
+    }
+    trapSylSet = calcTrapSyl();
+    if (!trapSylSet.has(c)) for (const n of wordSet) if (lastSyl(n) === c && !flagTrap.has(n)) trapSet.delete(n);
+    showTrapN(); $('trap-in').value = ''; trapMsg('✓ Đã bỏ đánh dấu “' + sy + '”', 'ok'); if (curWord) render(); if (mgrOpen) doSearch();
+  } catch (e) { trapMsg('Không ghi được lên kho', 'err'); }
+};
+$('trap-copy').onclick = () => copyText(Array.from(trapSylSet).join('\n'))
+  .then(ok => toast(ok ? '✓ Đã chép ' + trapSylSet.size + ' âm cuối' : 'Không chép được', ok ? 'var(--good)' : 'var(--bad)'));
+
+// Tải tất cả các từ hiện có (cả từ > 2 âm tiết) thành file .txt
+$('dl-btn').onclick = () => {
+  if (!dictReady) { toast('Kho từ chưa tải xong', 'var(--warn)'); return; }
+  const list = Array.from(allSet).sort((a, b) => a.localeCompare(b, 'vi'));
+  const blob = new Blob([list.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'kho-tu-' + list.length + '.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast('✓ Đã tải ' + list.length.toLocaleString('vi-VN') + ' từ');
+};
+
 $('wd-mgr-btn').onclick = () => {
   mgrOpen = !mgrOpen; applyView();
   if (mgrOpen) { doSearch(); window.scrollTo(0, 0); }
 };
 
 // ===== Thêm từ bẫy =====
-function showTrapN() { const e = $('trap-n'); if (e) e.textContent = '(' + trapSylSet.size + ' âm tiết bẫy)'; }
+function showTrapN() { const e = $('trap-n'); if (e) e.textContent = trapSylSet.size; }
 function trapMsg(t, cls) { const m = $('trap-msg'); m.textContent = t; m.className = cls || ''; }
 function applyTrapSyl(c) {
   trapSylSet.add(c);
@@ -998,7 +1073,8 @@ async function submitTrap() {
       try {
         const r = await fetch(DB + '/trapsyl.json', { method: 'POST', body: JSON.stringify({ s: sy }) });
         if (!r.ok) throw 0;
-        remoteSyl.add(canonSyl(sy)); applyTrapSyl(canonSyl(sy));
+        const j = await r.json().catch(() => null), c = canonSyl(sy);
+        remoteSyl.add(c); if (j && j.name) sylKeys.set(c, [j.name]); applyTrapSyl(c);
       } catch (e) { failed.push(sy); }
     }),
     ...flag.map(async w => { try { await setTrapFlag(w, true); } catch (e) { failed.push(w); } }),
@@ -1007,6 +1083,7 @@ async function submitTrap() {
   $('trap-btn').disabled = false;
   showTrapN();
   if (curWord) render();
+  if (mgrOpen) doSearch();
   if (!failed.length) $('trap-in').value = '';
   trapMsg(failed.length ? 'Chưa thêm được: ' + failed.join(', ') : '✓ Đã thêm ' + all.length + ' bẫy' + (notes.length ? ' (' + notes.join(' · ') + ')' : ''), failed.length ? 'err' : 'ok');
 }
@@ -1026,7 +1103,7 @@ function renderHist() {
   if (hist.length) html += histRow(hist, 'cur', both ? 'Chuỗi hiện tại' : '', true);
   if (prevHist.length) html += histRow(prevHist, 'prev', 'Chuỗi trước', false);
   $('wd-hist').innerHTML = html || '<span class="wd-empty">Chưa có từ nào</span>';
-  $('wd-hist').querySelectorAll('.hstrip').forEach(el => { el.scrollLeft = el.scrollWidth; });   // cuộn tới từ mới nhất (bên phải)
+  $('wd-hist').querySelectorAll('.hstrip').forEach(el => { el.scrollLeft = el.scrollWidth; });
 }
 
 // ===== AI: negamax + alpha-beta + đào sâu dần =====
@@ -1169,10 +1246,10 @@ function setAI(best) {
   }
   row.className = 'k-' + best.kind + ' pop';
   b.textContent = best.w.split(' ')[1]; b.title = best.why;
-  say(best.w, 'nv|' + curWord + '|' + best.w);   // đọc cả 2 tiếng
+  say(best.w, 'nv|' + curWord + '|' + best.w);
   r.textContent = (MARK[best.kind] ? MARK[best.kind] + ' ' : '') + LABEL[best.kind] + ' · ' + best.score;
   $('wd-why').textContent = best.why;
-  b.onclick = () => pick(best.w, b);
+  b.onclick = () => openSheet(best.w, b);
   $('wd-alt-wrap').hidden = !best.alt.length;
   alt.innerHTML = best.alt.map(a => `<button type="button" class="chip k-${a.kind}" data-full="${esc(a.w)}">${MARK[a.kind] ? `<span class="mk">${MARK[a.kind]}</span>` : ''}${esc(a.w.split(' ')[1])}<i>${a.s}</i></button>`).join('');
   alt.querySelectorAll('.chip').forEach(el => el.onclick = () => openSheet(el.dataset.full, el));
@@ -1190,7 +1267,6 @@ function render() {
   const best = pickDeep(g);
   setAI(best);
 
-  // từ đã hiện ở "Nên nối" và "Lựa chọn khác" thì không lặp lại ở danh sách này
   const altSet = new Set(best ? [best.w, ...best.alt.map(a => a.w)] : []);
   const LIM = 14;
   const html = ['dead', 'trap', 'ok', 'risk-trap', 'risk-dead']
@@ -1199,7 +1275,7 @@ function render() {
   box.querySelectorAll('.chip').forEach(el => { el.onclick = () => openSheet(el.dataset.full, el); });
 }
 
-// ===== Thử chép: gửi lệnh sang máy script qua /liveclear, chờ báo lại =====
+// ===== Thử chép =====
 let testT = 0, testSent = 0;
 $('wd-test').onclick = async () => {
   testT = Date.now(); testSent = performance.now(); lastClearT = testT;
@@ -1224,6 +1300,15 @@ setInterval(async () => {
   } catch (e) {}
   if (ms > 10000) { testT = 0; toast('Máy script không phản hồi', 'var(--bad)', 5000); }
 }, 400);
+
+// Bấm Tìm / Thêm / Xóa / Bỏ đánh dấu / Enter trong Quản lý kho thì tự tắt bàn phím
+const hideKb = () => {
+  const off = () => { const el = document.activeElement; if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) el.blur(); };
+  off(); setTimeout(off, 30); setTimeout(off, 150);   // tắt lại nếu bàn phím tự nhảy sang ô kế tiếp
+};
+$('wd-mgr').addEventListener('click', e => { if (e.target.closest('#srch-btn,#add-btn,#del-btn,#trap-btn,#untrap-btn')) hideKb(); });
+$('wd-mgr').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); setTimeout(hideKb, 0); } });
+$('wd-mgr').addEventListener('keyup', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') hideKb(); });
 
 updCnt(); renderHist(); renderUnknown(); setStatus();
 </script>
