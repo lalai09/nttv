@@ -464,6 +464,34 @@ html.lite .spark,html.lite .ring{display:none}
 #wd-dot{animation:none}
 .wd-h.last{animation:none;box-shadow:0 0 16px var(--nm)}
 html.lite #wd-ai-row::before,html.lite .tile::before{animation:none}
+/* Diễn biến AI dự đoán */
+#wd-stats{margin-top:8px;font-size:11px;font-weight:700;color:var(--nc);letter-spacing:.02em}
+#wd-pv{margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding-top:8px;border-top:1px dashed rgba(167,160,214,.35)}
+#wd-pv .pv-t{flex:none;width:100%;font-size:11px;font-weight:700;color:#b9b3d6}
+.pv-m{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:8px;font-size:13px;font-weight:700;color:#fff;background:rgba(14,10,30,.9);border:1px solid rgba(167,160,214,.4)}
+.pv-m i{font-style:normal;font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase}
+.pv-m.me{border-color:var(--good)}.pv-m.me i{color:var(--good)}
+.pv-m.op{border-color:var(--dead)}.pv-m.op i{color:var(--dead)}
+.pv-s{color:rgba(39,232,255,.6);font-weight:700}
+.pv-e{font-size:12px;font-weight:700;color:var(--warn)}
+.pvbox{margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:5px;max-height:190px;overflow-y:auto;scrollbar-width:thin}
+#srch-pv{margin:0 0 12px;padding:10px;border-radius:12px;background:#07050f;border:1px solid rgba(39,232,255,.4)}
+#srch-pv .pv-t{flex:none;width:100%;font-size:11px;font-weight:700;color:var(--nc)}
+.pv-m{white-space:nowrap}
+/* Trang phân tích */
+#an-list{display:flex;flex-direction:column;gap:6px}
+.an-row{border-radius:12px;border:1px solid rgba(167,160,214,.4);background:rgba(14,10,30,.9)}
+.an-row.me{border-left:4px solid var(--good)}.an-row.op{border-left:4px solid var(--dead)}
+.an-row.open{box-shadow:0 0 14px rgba(39,232,255,.35)}
+.an-w{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:6px 12px;text-align:left;color:#fff}
+.an-w b{flex:1;min-width:0;font-family:var(--display);font-size:20px;font-weight:800;word-break:break-word}
+.an-n{flex:none;width:22px;font-size:12px;font-weight:700;color:var(--muted)}
+.an-s{flex:none;width:56px;font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase}
+.an-row.me .an-s{color:var(--good)}.an-row.op .an-s{color:var(--dead)}
+.an-w em{flex:none;font-style:normal;font-size:12px;font-weight:800;color:var(--nc)}
+.an-c{flex:none;color:var(--muted)}
+.an-alts{padding:2px 12px 12px}
+.an-at{margin-bottom:8px;font-size:11px;font-weight:700;color:var(--nc)}
 </style>
 </head>
 <body>
@@ -501,6 +529,7 @@ html.lite #wd-ai-row::before,html.lite .tile::before{animation:none}
       <div class="lbl-row"><span id="wd-ai-label" class="lbl">Nên nối</span><span id="wd-ai-reason"></span></div>
       <button id="wd-ai-best" type="button">…</button>
       <div id="wd-why"></div>
+      <div id="wd-stats" hidden></div>
     </div>
 
     <div id="wd-alt-wrap" hidden>
@@ -538,6 +567,17 @@ html.lite #wd-ai-row::before,html.lite .tile::before{animation:none}
     </div>
   </section>
 
+  <!-- Trang phân tích -->
+  <section id="wd-an" class="view" hidden>
+    <div class="card">
+      <div class="lbl-row"><button id="an-back" class="ghost" type="button">← Quay lại</button><span class="lbl">Phân tích</span></div>
+      <div id="an-title" class="q-head" style="margin-top:10px"></div>
+      <div id="an-status" class="hint"></div>
+      <div class="hint">Mỗi dòng là một nước đi AI chọn. Số cuối dòng là điểm (dương: có lợi cho bạn, âm: có lợi cho đối thủ). Chạm vào một từ để xem đáp án khác.</div>
+    </div>
+    <div id="an-list"></div>
+  </section>
+
   <!-- Quản lý kho -->
   <section id="wd-mgr" class="view" hidden>
     <div class="mgr-box">
@@ -550,6 +590,7 @@ html.lite #wd-ai-row::before,html.lite .tile::before{animation:none}
         <button id="m-after" class="mode on" type="button" aria-pressed="true">Từ nối phía sau<small>(hành → hành động)</small></button>
         <button id="m-before" class="mode" type="button" aria-pressed="false">Từ nối phía trước<small>(cây → cỏ cây)</small></button>
       </div>
+      <button id="an-open" class="ghost" type="button" style="width:100%;margin-bottom:14px" disabled>🔍 Xem chuỗi AI</button>
       <h2 class="sec">Từ có thể nối tiếp</h2>
       <div id="srch-res"></div>
     </div>
@@ -787,14 +828,15 @@ async function copyText(t) {
     document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok;
   } catch (e) { return false; }
 }
-let mgrOpen = false;
+let mgrOpen = false, anOpen = false;
 function applyView() {
   const v = qState && qState.type === 'q' ? 'q' : 'nv';
-  $('wd-mgr').hidden = !mgrOpen;
-  $('wd-body-assist').hidden = mgrOpen || v !== 'nv';
-  $('wd-q').hidden = mgrOpen || v !== 'q';
-  $('wd-title').textContent = mgrOpen ? 'Quản lý kho' : (v === 'q' ? 'Giải đố' : 'Nối Từ');
-  $('wd-mgr-btn').textContent = mgrOpen ? '← Quay lại' : 'Quản lý kho';
+  $('wd-an').hidden = !anOpen;
+  $('wd-mgr').hidden = !mgrOpen || anOpen;
+  $('wd-body-assist').hidden = mgrOpen || anOpen || v !== 'nv';
+  $('wd-q').hidden = mgrOpen || anOpen || v !== 'q';
+  $('wd-title').textContent = anOpen ? 'Phân tích' : mgrOpen ? 'Quản lý kho' : (v === 'q' ? 'Giải đố' : 'Nối Từ');
+  $('wd-mgr-btn').textContent = (mgrOpen || anOpen) ? '← Quay lại' : 'Quản lý kho';
 }
 
 function renderQ(s) {
@@ -1104,7 +1146,7 @@ $('add-in').onpaste = e => {
 
 // ===== Quản lý kho =====
 const E = new Set(), MK2 = { dead: '✓', trap: '★', 'risk-trap': '⚡', 'risk-dead': '✗', ok: '' };
-let sMode = 'after', lastQ = '';   // lastQ: từ khóa đang tìm (ô nhập được xóa sau khi bấm Tìm)
+let sMode = 'after', lastQ = '', lastFlat = [];   // lastQ: từ khóa đang tìm (ô nhập được xóa sau khi bấm Tìm)
 async function setTrapFlag(n, val) {
   const ks = allKeys.get(n); if (!ks || !ks.length) throw new Error('no key');
   const body = {}; ks.forEach(k => { body[k + '/trap'] = val ? true : null; });
@@ -1136,6 +1178,7 @@ function setMode(m) {
 }
 function doSearch() {
   const box = $('srch-res'), q = lastQ;
+  lastFlat = []; $('an-open').disabled = true;
   if (!dictReady) { box.innerHTML = '<div class="empty">Kho từ chưa tải xong</div>'; return; }
   if (!q) { box.innerHTML = ''; return; }
   const parts = q.split(' '), sy = canonSyl(sMode === 'after' ? parts[parts.length - 1] : parts[0]);
@@ -1149,6 +1192,7 @@ function doSearch() {
   }
   const flat = ['dead', 'trap', 'ok', 'risk-trap', 'risk-dead'].flatMap(k => g[k].map(w => [w, k]));
   if (!flat.length) { box.innerHTML = '<div class="empty">Không tìm thấy từ nào</div>'; return; }
+  lastFlat = flat.map(([w, k]) => ({ w, r: null, k })); $('an-open').disabled = false;
   const LIM = 300;
   box.innerHTML = `<div class="hint">${flat.length.toLocaleString('vi-VN')} từ · chạm để chép</div><div class="chips" style="margin-top:8px">` +
     flat.slice(0, LIM).map(([w, k]) => `<button type="button" class="chip k-${k}" data-w="${esc(w)}">${MK2[k] ? `<span class="mk">${MK2[k]}</span>` : ''}${esc(w)}</button>`).join('') +
@@ -1167,6 +1211,11 @@ $('srch-in').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); sub
 $('srch-btn').onclick = submitSearch;
 $('m-after').onclick = () => setMode('after');
 $('m-before').onclick = () => setMode('before');
+$('an-open').onclick = () => {
+  if (!lastFlat.length) return;
+  // phân tích từ đầu danh sách; ở trang phân tích có thể chọn từ khác ở nước đầu
+  openAnalysis(lastFlat[0].w, E, 'Phân tích từ “' + lastQ + '”', lastFlat);
+};
 $('srch-res').onclick = e => {
   const el = e.target.closest('[data-w]'); if (!el) return;
   copyText(el.dataset.w).then(ok => toast(ok ? '✓ Đã chép ' + el.dataset.w : 'Không chép được', ok ? 'var(--good)' : 'var(--bad)'));
@@ -1225,6 +1274,7 @@ $('dl-btn').onclick = () => {
 };
 
 $('wd-mgr-btn').onclick = () => {
+  if (anOpen) { closeAnalysis(); return; }
   mgrOpen = !mgrOpen; applyView();
   if (mgrOpen) { doSearch(); window.scrollTo(0, 0); }
 };
@@ -1358,6 +1408,87 @@ function classify(list) {
   }
   return g;
 }
+// ===== Trang phân tích: AI chơi tới cuối ván, mỗi nước một dòng =====
+const PLY_MS = 250;   // thời gian tính cho mỗi nước trong chuỗi
+const kindOfW = (w, u) => trapSet.has(w) ? 'trap' : deadEnd(w, u) ? 'dead' : (risky(w, u) || 'ok');
+function bestMove(word, u, oppMove, o) {
+  const info = o.map(w => ({ w, rc: avail(w.split(' ')[1], w, u, 5), t: trapSet.has(w) ? 1 : 0 }))
+    .sort((a, b) => (b.t - a.t) || (a.rc - b.rc)).slice(0, 40);
+  let sc = null;
+  for (let d = 1; d <= 20; d++) {
+    deadline = performance.now() + PLY_MS; nodes = 0;
+    let cur;
+    try {
+      cur = info.map(x => {
+        u.add(x.w); let r;
+        try { r = search(x.w, u, d - 1, !oppMove, -Infinity, Infinity); } finally { u.delete(x.w); }
+        return { w: x.w, r };
+      });
+    } catch (e) { if (e !== TIMEOUT) throw e; break; }
+    sc = cur;
+    const b = cur.reduce((m, x) => (oppMove ? x.r < m.r : x.r > m.r) ? x : m, cur[0]);
+    const all = cur.every(x => oppMove ? x.r >= 900 : x.r <= -900);   // mọi nước đều đã phân thắng thua
+    if (oppMove ? (b.r <= -900 || all) : (b.r >= 900 || all)) break;
+  }
+  let list = sc ? sc.slice().sort((a, b) => oppMove ? a.r - b.r : b.r - a.r) : info.map(x => ({ w: x.w, r: null }));
+  list = list.map(x => ({ w: x.w, r: x.r, k: kindOfW(x.w, u) }));
+  return { best: list[0].w, list };
+}
+const AN_END = { 'opp-stuck': '🏁 Đối thủ hết nước nối: bạn thắng', 'me-stuck': '⚠ Bạn hết nước nối: bạn thua', limit: '… dừng ở 120 nước' };
+const an = { tok: 0, u0: new Set(), line: [], open: -1, done: false, end: '', title: '' };
+function anDraw() {
+  const mk = k => MARK[k] ? MARK[k] + ' ' : '';
+  $('an-list').innerHTML = an.line.map((m, i) => {
+    const cur = m.alts && m.alts.find(a => a.w === m.w);
+    const sc = cur && cur.r != null ? disp(cur.r) : '–';
+    const open = an.open === i;
+    let panel = '';
+    if (open) {
+      const others = (m.alts || []).filter(a => a.w !== m.w);
+      panel = others.length
+        ? `<div class="an-alts"><div class="an-at">Đáp án khác cho nước này (${others.length}) · chạm để đi thử nhánh đó</div><div class="chips">` +
+          others.map(a => `<button type="button" class="chip k-${a.k}" data-alt="${i}" data-w="${esc(a.w)}">${mk(a.k)}${esc(a.w)}<i>${a.r == null ? '–' : disp(a.r)}</i></button>`).join('') + '</div></div>'
+        : '<div class="an-alts"><div class="an-at">Không có đáp án khác cho nước này</div></div>';
+    }
+    return `<div class="an-row ${m.me ? 'me' : 'op'}${open ? ' open' : ''}"><button type="button" class="an-w" data-i="${i}">` +
+      `<span class="an-n">${i + 1}</span><span class="an-s">${m.me ? 'Bạn' : 'Đối thủ'}</span><b>${esc(m.w)}</b><em>${sc}</em><span class="an-c">${open ? '▾' : '▸'}</span></button>${panel}</div>`;
+  }).join('');
+  $('an-status').textContent = an.done ? (AN_END[an.end] || '') + ' · ' + an.line.length + ' nước' : '⏳ Đang phân tích… ' + an.line.length + ' nước';
+}
+function anStep(tok) {
+  if (tok !== an.tok) return;
+  const u = new Set(an.u0); an.line.forEach(m => u.add(m.w));
+  const last = an.line[an.line.length - 1], oppMove = last.me;
+  const o = opts(last.w, u);
+  if (!o.length) { an.done = true; an.end = oppMove ? 'opp-stuck' : 'me-stuck'; anDraw(); return; }
+  if (an.line.length >= 120) { an.done = true; an.end = 'limit'; anDraw(); return; }
+  const r = bestMove(last.w, u, oppMove, o);
+  an.line.push({ w: r.best, me: !oppMove, alts: r.list });
+  anDraw();
+  setTimeout(() => anStep(tok), 0);
+}
+function openAnalysis(first, u0, title, alts) {
+  an.tok++; an.u0 = new Set(u0); an.title = title; an.open = -1; an.done = false; an.end = '';
+  an.line = [{ w: first, me: true, alts: alts || null }];
+  anOpen = true; applyView(); window.scrollTo(0, 0);
+  $('an-title').textContent = title;
+  anDraw();
+  const t = an.tok; setTimeout(() => anStep(t), 0);
+}
+function closeAnalysis() { an.tok++; anOpen = false; applyView(); }
+$('an-back').onclick = closeAnalysis;
+$('an-list').onclick = e => {
+  const alt = e.target.closest('[data-alt]');
+  if (alt) {   // đi thử nhánh khác từ nước này
+    const i = +alt.dataset.alt;
+    an.line = an.line.slice(0, i + 1); an.line[i].w = alt.dataset.w;
+    an.tok++; an.done = false; an.end = ''; an.open = i; anDraw();
+    const t = an.tok; setTimeout(() => anStep(t), 0);
+    return;
+  }
+  const row = e.target.closest('[data-i]'); if (!row) return;
+  const i = +row.dataset.i; an.open = an.open === i ? -1 : i; anDraw();
+};
 function pickDeep(g) {
   const all = [...g.dead, ...g.trap, ...g.ok, ...g['risk-trap'], ...g['risk-dead']];
   if (!all.length) return null;
@@ -1399,7 +1530,8 @@ function pickDeep(g) {
   } else if (top.raw <= -900) why = `⚠ Mọi nước đều có thể bị ép thua (sâu ${reached})`;
   else if (kind.startsWith('risk')) why = `⚠ Mọi nước đều rủi ro, đây là nước ít xấu nhất (sâu ${reached})`;
   else why = `Đã kiểm tra ${reached} lượt, không có đòn ép thua`;
-  return { w: top.w, kind, why, score: disp(top.total), alt: rk.slice(1, 4).map(r => {
+  const stats = { nodes, reached, nc: cands.length, ms: Math.round(performance.now() - (deadline - BUDGET)) };
+  return { w: top.w, kind, why, stats, list: rk.map(r => ({ w: r.w, r: r.total, k: (['dead', 'trap', 'risk-trap', 'risk-dead'].find(x => g[x].includes(r.w)) || 'ok') })), score: disp(top.total), alt: rk.slice(1, 4).map(r => {
     let k = 'ok';
     for (const x of ['dead', 'trap', 'risk-trap', 'risk-dead']) if (g[x].includes(r.w)) { k = x; break; }
     const c = cands.find(c => c.w === r.w);
@@ -1448,13 +1580,16 @@ function setAI(best) {
   if (!best) {
     row.className = 'k-ok';
     b.textContent = 'Hết nước đi'; b.onclick = null;
-    r.textContent = ''; alt.innerHTML = ''; $('wd-alt-wrap').hidden = true; $('wd-why').textContent = ''; return;
+    r.textContent = ''; alt.innerHTML = ''; $('wd-alt-wrap').hidden = true; $('wd-why').textContent = ''; $('wd-stats').hidden = true; return;
   }
   row.className = 'k-' + best.kind + ' pop';
   b.textContent = best.w.split(' ')[1]; b.title = best.why;
   say(best.w, 'nv|' + curWord + '|' + best.w);
   r.textContent = (MARK[best.kind] ? MARK[best.kind] + ' ' : '') + LABEL[best.kind] + ' · ' + best.score;
   $('wd-why').textContent = best.why;
+  const st = best.stats, sEl = $('wd-stats');
+  sEl.hidden = false;
+  sEl.textContent = `Đã xét ${st.nc} từ · sâu ${st.reached} lượt · ${st.nodes.toLocaleString('vi-VN')} nước đi · ${st.ms}ms`;
   b.onclick = () => openSheet(best.w, b);
   $('wd-alt-wrap').hidden = !best.alt.length;
   alt.innerHTML = best.alt.map(a => `<button type="button" class="chip k-${a.kind}" data-full="${esc(a.w)}">${MARK[a.kind] ? `<span class="mk">${MARK[a.kind]}</span>` : ''}${esc(a.w.split(' ')[1])}<i>${a.s}</i></button>`).join('');
