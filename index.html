@@ -1303,7 +1303,7 @@ function renderHist() {
 }
 
 // ===== AI: negamax + alpha-beta + đào sâu dần =====
-const AI_WIN = 1000, BUDGET = 450, TIMEOUT = { t: 1 };   // BUDGET: 220 -> 450 (search sâu hơn)
+const AI_WIN = 1000, BUDGET = 1500, TIMEOUT = { t: 1 };   // BUDGET: 220 -> 1500ms (search sâu)
 let deadline = 0, nodes = 0;
 function avail(ns, ex, u, lim) {
   const l = byFirst.get(ns); if (!l) return 0; let c = 0;
@@ -1329,7 +1329,7 @@ function search(word, u, depth, oppMove, alpha, beta) {
   }
   info.sort((a, b) => (b.t - a.t) || (a.rc - b.rc));
   // Đối thủ: xét gần hết nước để không bỏ sót đòn ép thua; phía mình: cắt bớt
-  const n = oppMove ? Math.min(14, info.length) : Math.min(depth >= 3 ? 8 : 6, info.length);
+  const n = oppMove ? Math.min(40, info.length) : Math.min(depth >= 3 ? 14 : 10, info.length);
   let b = oppMove ? Infinity : -Infinity;
   for (let i = 0; i < n; i++) {
     const w = info[i].w; u.add(w);
@@ -1368,10 +1368,10 @@ function pickDeep(g) {
     const pen = rk === 'risk-dead' ? 600 : rk === 'risk-trap' ? 200 : 0;
     return { w, rk, bonus: t * 40 + (20 - on) * 4 - pen,
              key: (deadSet.has(w) ? 1000 : 0) + t * 200 - on - pen };
-  }).sort((a, b) => b.key - a.key).slice(0, 40);
+  }).sort((a, b) => b.key - a.key).slice(0, 60);
   deadline = performance.now() + BUDGET; nodes = 0;
   let res = null, reached = 0;
-  for (let d = 1; d <= 8; d++) {
+  for (let d = 1; d <= 30; d++) {
     let cur;
     try {
       cur = cands.map(c => {
