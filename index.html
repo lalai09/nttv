@@ -909,7 +909,7 @@ function handleQ(obj) {
 async function pollQ() {
   try { handleQ(await (await fetch(`${DB}/liveq/${encodeURIComponent(code)}.json`, { cache: 'no-store' })).json()); } catch (e) {}
 }
-setInterval(pollQ, 1500); pollQ();
+setInterval(pollQ, 800); pollQ();
 
 // ===== Nhận từ Nối Từ từ userscript (/live/<mã phòng>) =====
 function handleLive(d) {
@@ -920,7 +920,7 @@ async function poll() {
   try { handleLive(await (await fetch(`${DB}/live/${encodeURIComponent(code)}.json`, { cache: 'no-store' })).json()); }
   catch (e) { $('wd-dot').classList.add('off'); }
 }
-setInterval(poll, 1500); poll();
+setInterval(poll, 800); poll();
 
 // ===== Luồng Firebase (Server-Sent Events) =====
 let esQ = null, esL = null;
@@ -1353,7 +1353,7 @@ function renderHist() {
 }
 
 // ===== AI: negamax + alpha-beta + đào sâu dần =====
-const AI_WIN = 1000, BUDGET = 1500, TIMEOUT = { t: 1 };   // BUDGET: 220 -> 1500ms (search sâu)
+const AI_WIN = 1000, BUDGET = 800, TIMEOUT = { t: 1 };   // BUDGET: 1500 -> 800ms
 let deadline = 0, nodes = 0;
 function avail(ns, ex, u, lim) {
   const l = byFirst.get(ns); if (!l) return 0; let c = 0;
@@ -1540,6 +1540,25 @@ function pickDeep(g) {
   }) };
 }
 
+// Gợi ý nhanh (không search sâu) để hiện ngay, gợi ý sâu sẽ thay thế sau
+function quickPick(g) {
+  const all = [...g.dead, ...g.trap, ...g.ok, ...g['risk-trap'], ...g['risk-dead']];
+  if (!all.length) return null;
+  const deadSet = new Set(g.dead);
+  const kindOf = w => ['dead', 'trap', 'risk-trap', 'risk-dead'].find(x => g[x].includes(w)) || 'ok';
+  const c = all.map(w => {
+    const on = avail(w.split(' ')[1], w, used, 20), t = trapSet.has(w) ? 1 : 0;
+    const rk = deadSet.has(w) ? null : risky(w, used);
+    const pen = rk === 'risk-dead' ? 600 : rk === 'risk-trap' ? 200 : 0;
+    return { w, rk, key: (deadSet.has(w) ? 1000 : 0) + t * 200 - on - pen };
+  }).sort((a, b) => b.key - a.key);
+  const top = c[0];
+  return {
+    w: top.w, kind: top.rk || kindOf(top.w), why: '⏳ Đang tính sâu…', stats: null, score: '…', list: [],
+    alt: c.slice(1, 4).map(x => ({ w: x.w, s: '…', kind: x.rk || kindOf(x.w) }))
+  };
+}
+
 // ===== Hiển thị Nối Từ =====
 const LABEL = { dead: 'Cụt', trap: 'Bẫy', ok: 'Ổn', 'risk-trap': 'Rủi ro', 'risk-dead': 'Rủi ro' };
 const MARK = { dead: '✓', trap: '★', ok: '', 'risk-trap': '✗', 'risk-dead': '✗' };
@@ -1584,20 +1603,22 @@ function setAI(best) {
   }
   row.className = 'k-' + best.kind + ' pop';
   b.textContent = best.w.split(' ')[1]; b.title = best.why;
-  say(best.w, 'nv|' + curWord + '|' + best.w);
+  if (best.stats) say(best.w, 'nv|' + curWord + '|' + best.w);
   r.textContent = (MARK[best.kind] ? MARK[best.kind] + ' ' : '') + LABEL[best.kind] + ' · ' + best.score;
   $('wd-why').textContent = best.why;
   const st = best.stats, sEl = $('wd-stats');
-  sEl.hidden = false;
-  sEl.textContent = `Đã xét ${st.nc} từ · sâu ${st.reached} lượt · ${st.nodes.toLocaleString('vi-VN')} nước đi · ${st.ms}ms`;
+  sEl.hidden = !st;
+  if (st) sEl.textContent = `Đã xét ${st.nc} từ · sâu ${st.reached} lượt · ${st.nodes.toLocaleString('vi-VN')} nước đi · ${st.ms}ms`;
   b.onclick = () => openSheet(best.w, b);
   $('wd-alt-wrap').hidden = !best.alt.length;
   alt.innerHTML = best.alt.map(a => `<button type="button" class="chip k-${a.kind}" data-full="${esc(a.w)}">${MARK[a.kind] ? `<span class="mk">${MARK[a.kind]}</span>` : ''}${esc(a.w.split(' ')[1])}<i>${a.s}</i></button>`).join('');
   alt.querySelectorAll('.chip').forEach(el => el.onclick = () => openSheet(el.dataset.full, el));
 }
 
+let renderTok = 0;
 function render() {
   const box = $('wd-suggest');
+  renderTok++;   // huỷ phép tính sâu đang chờ của lượt trước
   if (!dictReady) { box.innerHTML = '<div class="empty">Đang tải kho từ...</div>'; setAI(null); return; }
   const n = norm(curWord), p = n.split(' ');
   if (p.length !== 2) { box.innerHTML = '<div class="empty">Từ không hợp lệ (cần đúng 2 âm tiết)</div>'; setAI(null); return; }
@@ -1605,15 +1626,23 @@ function render() {
   if (!list.length) { box.innerHTML = `<div class="empty err">Hết từ nối cho “${esc(p[1])}”</div>`; setAI(null); return; }
 
   const g = classify(list);
-  const best = pickDeep(g);
-  setAI(best);
-
-  const altSet = new Set(best ? [best.w, ...best.alt.map(a => a.w)] : []);
-  const LIM = 14;
-  const html = ['dead', 'trap', 'ok', 'risk-trap', 'risk-dead']
-    .map(k => g[k].filter(w => !altSet.has(w)).slice(0, LIM).map(w => chip(w, k)).join('')).join('');
-  box.innerHTML = html || '<div class="empty">Không còn từ nào khác</div>';
-  box.querySelectorAll('.chip').forEach(el => { el.onclick = () => openSheet(el.dataset.full, el); });
+  const drawChips = best => {
+    const altSet = new Set(best ? [best.w, ...best.alt.map(a => a.w)] : []);
+    const LIM = 14;
+    const html = ['dead', 'trap', 'ok', 'risk-trap', 'risk-dead']
+      .map(k => g[k].filter(w => !altSet.has(w)).slice(0, LIM).map(w => chip(w, k)).join('')).join('');
+    box.innerHTML = html || '<div class="empty">Không còn từ nào khác</div>';
+    box.querySelectorAll('.chip').forEach(el => { el.onclick = () => openSheet(el.dataset.full, el); });
+  };
+  const quick = quickPick(g);
+  setAI(quick); drawChips(quick);            // hiện ngay
+  const tok = renderTok;
+  setTimeout(() => {                          // tính sâu sau khi đã vẽ xong
+    if (tok !== renderTok) return;
+    const best = pickDeep(g);
+    if (tok !== renderTok) return;
+    setAI(best); drawChips(best);
+  }, 40);
 }
 
 // ===== Thử chép =====
