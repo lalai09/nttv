@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0e1016">
-<title>Nối Từ</title>
+<title>Nối</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -766,7 +766,7 @@ function onWord(w) {
   if (chain) {
     pending = null;
   } else if (valid && anchor && pending && n !== pending.n && isChain(pending.n, n) && (knownWord(pending.n) || knownWord(n))) {
-    if (hist.length) prevHist = hist;
+    if (hist.length) { learn(hist); prevHist = hist; }
     used.clear(); mine.clear(); opp.clear();
     used.add(pending.n);
     hist = [{ w: pending.w, n: pending.n, me: false }];
@@ -1169,7 +1169,6 @@ function search(word, u, depth, oppMove, alpha, beta) {
   }
   return b;
 }
-const disp = v => v >= 900 ? 999 : v <= -900 ? -999 : Math.round(v);
 const deadEnd = (w, u) => avail(w.split(' ')[1], w, u, 1) === 0;
 function risky(w, u) {
   const a = (byFirst.get(w.split(' ')[1]) || []).filter(x => !u.has(x));
@@ -1187,29 +1186,69 @@ function classify(list) {
   }
   return g;
 }
+// ===== Bộ giải CÓ NHỚ: kết quả đã chứng minh được lưu lại, các lượt sau dùng lại luôn =====
+const TT = new Map(), UNK = new Map(), ZOB = new Map();   // TT: 1 = người sắp đi THẮNG chắc, -1 = THUA chắc
+let U = new Set(), ST = null, sig0 = -1;
+const zw = w => { let z = ZOB.get(w); if (!z) { z = [(Math.random() * 2097152) | 0, (Math.random() * 4294967296) | 0, (Math.random() * 4294967296) | 0]; ZOB.set(w, z); } return z; };
+const hashOf = s => { let h = 0, l = 0; for (const w of s) { const z = zw(w); h ^= z[0]; l ^= z[1]; } return [h, l]; };
+const ttKey = (hh, hl, w) => (hh & 2097151) * 4294967296 + ((hl ^ zw(w)[2]) >>> 0);
+// Kinh nghiệm qua các ván: thắng thì cộng điểm, thua thì trừ điểm cho các nước mình đã đi
+const EXP_KEY = 'wd_exp'; let EXP = {};
+try { EXP = JSON.parse(lsGet(EXP_KEY, '{}')) || {}; } catch (e) { EXP = {}; }
+function learn(h) {
+  if (!h || h.length < 2) return;
+  const won = h[h.length - 1].me;
+  h.filter(x => x.me).slice(-3).forEach(x => { EXP[x.n] = Math.max(-5, Math.min(5, (EXP[x.n] || 0) + (won ? 1 : -2))); });
+  lsSet(EXP_KEY, JSON.stringify(EXP));
+}
+// Người đang phải đi sau từ w có ép thắng được không? 1 = có, -1 = không (thua chắc), 0 = chưa rõ ở độ sâu d
+function wins(w, hh, hl, d) {
+  if ((++nodes & 255) === 0 && performance.now() > deadline) throw TIMEOUT;
+  const key = ttKey(hh, hl, w);
+  const c = TT.get(key); if (c !== undefined) return c;
+  const ud = UNK.get(key); if (ud !== undefined && ud >= d) return 0;
+  const o = opts(w, U);
+  if (!o.length) { TT.set(key, -1); return -1; }
+  const info = [];
+  for (const x of o) {
+    const rc = avail(x.split(' ')[1], x, U, 6);
+    if (rc === 0) { TT.set(key, 1); return 1; }
+    info.push({ x, rc, t: trapSet.has(x) ? 1 : 0 });
+  }
+  if (d <= 0) return 0;
+  info.sort((a, b) => (b.t - a.t) || (a.rc - b.rc));
+  let unk = false;
+  for (const e of info) {
+    const z = zw(e.x); U.add(e.x);
+    let r; try { r = wins(e.x, hh ^ z[0], hl ^ z[1], d - 1); } finally { U.delete(e.x); }
+    if (r === -1) { TT.set(key, 1); return 1; }
+    if (r === 0) unk = true;
+  }
+  if (!unk) { TT.set(key, -1); return -1; }
+  UNK.set(key, d); return 0;
+}
+const disp = v => v >= 900 ? 999 : v <= -900 ? -999 : Math.round(v);
 // ===== Trang phân tích: AI chơi tới cuối ván, mỗi nước một dòng =====
 const PLY_MS = 250;   // thời gian tính cho mỗi nước trong chuỗi
 const kindOfW = (w, u) => trapSet.has(w) ? 'trap' : deadEnd(w, u) ? 'dead' : (risky(w, u) || 'ok');
 function bestMove(word, u, oppMove, o) {
-  const info = o.map(w => ({ w, rc: avail(w.split(' ')[1], w, u, 5), t: trapSet.has(w) ? 1 : 0 }))
-    .sort((a, b) => (b.t - a.t) || (a.rc - b.rc)).slice(0, 40);
+  U = new Set(u); const [H, L] = hashOf(U);
+  const info = o.map(w => ({ w, rc: avail(w.split(' ')[1], w, U, 5), t: trapSet.has(w) ? 1 : 0 }))
+    .sort((a, b) => (b.t - a.t) || (a.rc - b.rc)).slice(0, 60);
   let sc = null;
-  for (let d = 1; d <= 20; d++) {
-    deadline = performance.now() + PLY_MS; nodes = 0;
+  for (let d = 1; d <= 60; d++) {
+    deadline = performance.now() + PLY_MS * 2; nodes = 0;
     let cur;
     try {
-      cur = info.map(x => {
-        u.add(x.w); let r;
-        try { r = search(x.w, u, d - 1, !oppMove, -Infinity, Infinity); } finally { u.delete(x.w); }
-        return { w: x.w, r };
-      });
+      cur = info.map(x => { const z = zw(x.w); U.add(x.w); let r; try { r = wins(x.w, H ^ z[0], L ^ z[1], d - 1); } finally { U.delete(x.w); } return { w: x.w, r, rc: x.rc }; });
     } catch (e) { if (e !== TIMEOUT) throw e; break; }
     sc = cur;
-    const b = cur.reduce((m, x) => (oppMove ? x.r < m.r : x.r > m.r) ? x : m, cur[0]);
-    const all = cur.every(x => oppMove ? x.r >= 900 : x.r <= -900);   // mọi nước đều đã phân thắng thua
-    if (oppMove ? (b.r <= -900 || all) : (b.r >= 900 || all)) break;
+    if (cur.some(x => x.r === -1) || cur.every(x => x.r === 1)) break;
   }
-  let list = sc ? sc.slice().sort((a, b) => oppMove ? a.r - b.r : b.r - a.r) : info.map(x => ({ w: x.w, r: null }));
+  const rank = x => (x.r === -1 ? 0 : x.r === 0 ? 1 : 2);   // r = kết quả của người đi SAU nước x
+  let list = sc ? sc.slice().sort((a, b) => rank(a) - rank(b) || a.rc - b.rc)
+                      .map(x => ({ w: x.w, r: x.r === 0 ? 0 : ((x.r === -1) !== oppMove ? 1000 : -1000) }))
+               : info.map(x => ({ w: x.w, r: null }));
   list = list.map(x => ({ w: x.w, r: x.r, k: kindOfW(x.w, u) }));
   return { best: list[0].w, list };
 }
@@ -1268,55 +1307,66 @@ $('an-list').onclick = e => {
   const row = e.target.closest('[data-i]'); if (!row) return;
   const i = +row.dataset.i; an.open = an.open === i ? -1 : i; anDraw();
 };
-function pickDeep(g) {
+function startDeep(g) {
+  let n = 0; for (const l of byFirst.values()) n += l.length;
+  if (n !== sig0 || TT.size > 2500000) { TT.clear(); UNK.clear(); sig0 = n; }   // kho từ đổi thì bỏ kết quả cũ
   const all = [...g.dead, ...g.trap, ...g.ok, ...g['risk-trap'], ...g['risk-dead']];
-  if (!all.length) return null;
   const u = new Set(used), deadSet = new Set(g.dead);
   const cands = all.map(w => {
     const on = avail(w.split(' ')[1], w, u, 20), t = trapSet.has(w) ? 1 : 0;
-    const rk = deadSet.has(w) ? null : risky(w, u);   // kiểm tra rủi ro cho cả từ bẫy
+    const rk = deadSet.has(w) ? null : risky(w, u);
     const pen = rk === 'risk-dead' ? 600 : rk === 'risk-trap' ? 200 : 0;
-    return { w, rk, bonus: t * 40 + (20 - on) * 4 - pen,
+    return { w, rk, on, bonus: t * 40 + (20 - on) * 4 - pen + (EXP[w] || 0) * 12,
              key: (deadSet.has(w) ? 1000 : 0) + t * 200 - on - pen };
-  }).sort((a, b) => b.key - a.key).slice(0, 60);
-  deadline = performance.now() + BUDGET; nodes = 0;
-  let res = null, reached = 0;
-  for (let d = 1; d <= 30; d++) {
+  }).sort((a, b) => b.key - a.key).slice(0, 80);
+  const [H, L] = hashOf(used);
+  ST = { g, cands, H, L, d: 1, res: null, reached: 0, ms: 0, nodes: 0, done: !cands.length };
+}
+// Đào sâu từng đợt ms mili-giây; kết quả đã chứng minh được giữ lại nên đợt sau không tính lại từ đầu
+function stepDeep(ms) {
+  const S = ST, t0 = performance.now();
+  U = new Set(used);
+  while (!S.done) {
+    deadline = t0 + ms; nodes = 0;
     let cur;
     try {
-      cur = cands.map(c => {
-        u.add(c.w); let raw;
-        try { raw = search(c.w, u, d - 1, true, -Infinity, Infinity); } finally { u.delete(c.w); }
-        return { w: c.w, raw, bonus: c.bonus };
+      cur = S.cands.map(c => {
+        const z = zw(c.w); U.add(c.w); let r, good = 0;
+        try {
+          r = wins(c.w, S.H ^ z[0], S.L ^ z[1], S.d);
+          if (r === 0) for (const x of opts(c.w, U)) {   // đếm số đáp án của đối thủ mà mình đã chứng minh thắng
+            const zz = zw(x);
+            if (TT.get(ttKey(S.H ^ z[0] ^ zz[0], S.L ^ z[1] ^ zz[1], x)) === 1) good++;
+          }
+        } finally { U.delete(c.w); }
+        return { w: c.w, r, good, on: c.on, bonus: c.bonus };
       });
-    } catch (e) { if (e !== TIMEOUT) throw e; break; }
-    res = cur; reached = d;
-    if (cur.some(r => r.raw >= 900)) break;
+    } catch (e) { if (e !== TIMEOUT) throw e; S.nodes += nodes; break; }
+    S.nodes += nodes; S.res = cur; S.reached = S.d;
+    if (cur.some(x => x.r === -1) || cur.every(x => x.r === 1) || S.d >= 60) S.done = true; else S.d++;
   }
-  if (!res) { res = cands.map(c => ({ w: c.w, raw: c.bonus, bonus: 0 })); reached = 0; }
-  res.forEach(r => r.total = Math.abs(r.raw) >= 900 ? r.raw : r.raw + r.bonus);
-  const rk = res.slice().sort((a, b) => b.total - a.total), top = rk[0];
-  let kind = 'ok';
-  for (const k of ['dead', 'trap', 'risk-trap', 'risk-dead']) if (g[k].includes(top.w)) { kind = k; break; }
-  // Từ bẫy/thường nhưng đối thủ còn đường đánh lại: hiển thị đúng mức rủi ro
-  const topC = cands.find(c => c.w === top.w);
-  if (topC && topC.rk && Math.abs(top.raw) < 900) kind = topC.rk;
-  let why;
-  if (top.raw >= 900) {
-    const plies = reached - (top.raw - AI_WIN), m = Math.max(1, Math.round((plies + 1) / 2));
-    if (m <= 1 || kind === 'dead') { kind = 'dead'; why = '✓ Cụt đường ngay — đối thủ hết nước nối'; }
-    else { if (kind === 'ok' || kind.startsWith('risk')) kind = 'trap'; why = `★ Thắng ép sau ${m} nước của bạn (sâu ${reached})`; }
-  } else if (top.raw <= -900) why = `⚠ Mọi nước đều có thể bị ép thua (sâu ${reached})`;
-  else if (kind.startsWith('risk')) why = `⚠ Mọi nước đều rủi ro, đây là nước ít xấu nhất (sâu ${reached})`;
-  else why = `Đã kiểm tra ${reached} lượt, không có đòn ép thua`;
-  const stats = { nodes, reached, nc: cands.length, ms: Math.round(performance.now() - (deadline - BUDGET)) };
-  return { w: top.w, kind, why, stats, list: rk.map(r => ({ w: r.w, r: r.total, k: (['dead', 'trap', 'risk-trap', 'risk-dead'].find(x => g[x].includes(r.w)) || 'ok') })), score: disp(top.total), alt: rk.slice(1, 4).map(r => {
-    let k = 'ok';
-    for (const x of ['dead', 'trap', 'risk-trap', 'risk-dead']) if (g[x].includes(r.w)) { k = x; break; }
-    const c = cands.find(c => c.w === r.w);
-    if (c && c.rk && Math.abs(r.raw) < 900) k = c.rk;
-    return { w: r.w, s: disp(r.total), kind: k };
-  }) };
+  S.ms += performance.now() - t0;
+  if (S.ms > 9000) S.done = true;
+  return S.done;
+}
+function buildPick() {
+  const S = ST, g = S.g, d = S.reached;
+  const sc = r => r.r === -1 ? 5000 - r.on : r.r === 1 ? -5000 + r.on : r.bonus + r.good * 25;
+  const rows = (S.res || S.cands.map(c => ({ w: c.w, r: 0, good: 0, on: c.on, bonus: c.bonus }))).slice().sort((a, b) => sc(b) - sc(a));
+  const top = rows[0];
+  const kOf = r => { const c = S.cands.find(x => x.w === r.w); const k = ['dead', 'trap', 'risk-trap', 'risk-dead'].find(x => g[x].includes(r.w)) || 'ok'; return c && c.rk && r.r === 0 ? c.rk : k; };
+  const val = r => r.r === -1 ? 999 : r.r === 1 ? -999 : Math.round(r.bonus + r.good * 25);
+  let kind = kOf(top), why;
+  if (top.r === -1) {
+    if (top.on === 0 || kind === 'dead') { kind = 'dead'; why = '✓ Cụt đường ngay — đối thủ hết nước nối'; }
+    else { kind = 'trap'; why = `★ ĐÃ CHỨNG MINH thắng chắc (sâu ${d} lượt): đối thủ đi gì cũng thua. Kết quả đã được nhớ, các lượt sau cứ theo kế hoạch này`; }
+  } else if (top.r === 1) { why = `⚠ Đã chứng minh: nếu đối thủ chơi đúng thì mọi nước đều thua (sâu ${d}). Chọn nước cầm cự lâu nhất`; }
+  else if (kind.startsWith('risk')) why = `⚠ Mọi nước đều rủi ro, đây là nước ít xấu nhất`;
+  else why = S.done ? `Đã xét sâu ${d} lượt, không thấy đòn ép thua` : '⏳ Đang đào sâu…';
+  const show = S.done || top.r !== 0;
+  return { w: top.w, kind, why, list: [], score: val(top),
+    stats: show ? { nodes: S.nodes, reached: d, nc: S.cands.length, ms: Math.round(S.ms) } : null,
+    alt: rows.slice(1, 4).map(r => ({ w: r.w, s: val(r), kind: kOf(r) })) };
 }
 
 // Gợi ý nhanh (không search sâu) để hiện ngay, gợi ý sâu sẽ thay thế sau
@@ -1489,11 +1539,18 @@ function render() {
   const quick = quickPick(g);
   setAI(quick); drawChips(quick);            // hiện ngay
   const tok = renderTok;
-  setTimeout(() => {                          // tính sâu sau khi đã vẽ xong
+  setTimeout(() => {                          // đào sâu từng đợt, kết quả cập nhật dần
     if (tok !== renderTok) return;
-    const best = pickDeep(g);
-    if (tok !== renderTok) return;
-    setAI(best); drawChips(best);
+    startDeep(g);
+    let shown = '';
+    const pump = () => {
+      if (tok !== renderTok) return;
+      const done = stepDeep(600), best = buildPick();
+      const sg = best.w + '|' + best.score + '|' + best.why + '|' + done;
+      if (sg !== shown) { shown = sg; setAI(best); drawChips(best); }
+      if (!done) setTimeout(pump, 30);
+    };
+    pump();
   }, 40);
 }
 
